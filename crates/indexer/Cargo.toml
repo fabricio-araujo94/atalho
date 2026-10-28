@@ -1,0 +1,15 @@
+[package]
+name = "indexer"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+readme = "README.md"
+description = "Application and command indexing engine for Atalho"
+
+[lints]
+workspace = true
+
+[dependencies]
+async-trait = { workspace = true }
+core = { workspace = true }

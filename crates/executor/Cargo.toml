@@ -1,0 +1,16 @@
+[package]
+name = "executor"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+readme = "README.md"
+description = "Application and command execution module for Atalho"
+
+[lints]
+workspace = true
+
+[dependencies]
+async-trait = { workspace = true }
+core = { workspace = true }
+platform = { workspace = true }

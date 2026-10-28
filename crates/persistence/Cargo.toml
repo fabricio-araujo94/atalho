@@ -1,0 +1,15 @@
+[package]
+name = "persistence"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+readme = "README.md"
+description = "State, preferences, and history persistence layer for Atalho"
+
+[lints]
+workspace = true
+
+[dependencies]
+async-trait = { workspace = true }
+core = { workspace = true }
