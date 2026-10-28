@@ -1,0 +1,21 @@
+[package]
+name = "app"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+readme = "README.md"
+description = "Main entry point and orchestrator for the Atalho desktop application"
+
+[lints]
+workspace = true
+
+[dependencies]
+core = { workspace = true }
+executor = { workspace = true }
+iced = { workspace = true }
+indexer = { workspace = true }
+matcher = { workspace = true }
+persistence = { workspace = true }
+platform = { workspace = true }
+ui = { workspace = true }

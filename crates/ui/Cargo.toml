@@ -1,0 +1,15 @@
+[package]
+name = "ui"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+readme = "README.md"
+description = "Iced-based graphical user interface for Atalho"
+
+[lints]
+workspace = true
+
+[dependencies]
+core = { workspace = true }
+iced = { workspace = true }
