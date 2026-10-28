@@ -1,0 +1,50 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/core",
+    "crates/indexer",
+    "crates/matcher",
+    "crates/executor",
+    "crates/persistence",
+    "crates/platform",
+    "crates/ui",
+    "crates/app",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+authors = ["Fabricio <fabricio.araujo8914@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/fabricio/atalho"
+
+[workspace.dependencies]
+core = { path = "crates/core" }
+indexer = { path = "crates/indexer" }
+matcher = { path = "crates/matcher" }
+executor = { path = "crates/executor" }
+persistence = { path = "crates/persistence" }
+platform = { path = "crates/platform" }
+ui = { path = "crates/ui" }
+
+async-trait = "0.1"
+thiserror = "2.0"
+serde = { version = "1.0", features = ["derive"] }
+windows = "0.58"
+iced = "0.14"
+
+[workspace.lints.rust]
+warnings = "warn"
+
+[workspace.lints.clippy]
+all = "warn"
+pedantic = "warn"
+nursery = "warn"
+unwrap_used = "deny"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+strip = "symbols"
+panic = "abort"
