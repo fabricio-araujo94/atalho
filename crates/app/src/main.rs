@@ -42,10 +42,17 @@ fn main() {
     // Demonstrate composition and matching
     match matcher.search("Notepad", &sample_apps, &sample_commands) {
         Ok(results) => {
-            println!("Initial search indexing: {} items matched query", results.len());
+            println!(
+                "Initial search indexing: {} items matched query",
+                results.len()
+            );
             state.set_results(results);
             if let Some(selected) = state.selected_result() {
-                println!("Top match: {} (score: {})", selected.title, selected.score.value());
+                println!(
+                    "Top match: {} (score: {})",
+                    selected.title,
+                    selected.score.value()
+                );
             }
         }
         Err(err) => {

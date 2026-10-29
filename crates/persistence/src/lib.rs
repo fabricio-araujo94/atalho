@@ -3,8 +3,8 @@
 //! Provides implementations of [`core::Persistence`] for storing application lists,
 //! search cache, and launch metrics.
 
-use std::sync::RwLock;
 use core::{AppEntry, AppError, Persistence, Result};
+use std::sync::RwLock;
 
 /// In-memory thread-safe implementation of [`Persistence`].
 #[derive(Debug, Default)]
@@ -30,6 +30,7 @@ impl Persistence for InMemoryPersistence {
             .map_err(|err| AppError::io_failed(format!("Lock acquisition error: {err}")))?;
         guard.clear();
         guard.extend_from_slice(apps);
+        drop(guard);
         Ok(())
     }
 
@@ -42,11 +43,10 @@ impl Persistence for InMemoryPersistence {
     }
 
     async fn record_launch(&self, entry_id: &str) -> Result<()> {
-        let mut guard = self
-            .launch_history
+        self.launch_history
             .write()
-            .map_err(|err| AppError::io_failed(format!("Lock acquisition error: {err}")))?;
-        guard.push(entry_id.to_string());
+            .map_err(|err| AppError::io_failed(format!("Lock acquisition error: {err}")))?
+            .push(entry_id.to_string());
         Ok(())
     }
 }

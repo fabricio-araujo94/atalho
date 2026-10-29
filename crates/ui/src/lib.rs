@@ -61,7 +61,7 @@ impl LauncherState {
     }
 
     /// Navigates highlight to the next search result.
-    pub fn select_next(&mut self) {
+    pub const fn select_next(&mut self) {
         if self.results.is_empty() {
             self.selected_index = None;
             return;
@@ -74,7 +74,7 @@ impl LauncherState {
     }
 
     /// Navigates highlight to the previous search result.
-    pub fn select_previous(&mut self) {
+    pub const fn select_previous(&mut self) {
         if self.results.is_empty() {
             self.selected_index = None;
             return;

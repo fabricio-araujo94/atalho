@@ -46,7 +46,7 @@ pub trait Matcher: Send + Sync {
         let mut results = self.match_apps(query, apps)?;
         let mut cmd_results = self.match_commands(query, commands)?;
         results.append(&mut cmd_results);
-        results.sort_by(|a, b| b.score.cmp(&a.score));
+        results.sort_by_key(|a| std::cmp::Reverse(a.score));
         Ok(results)
     }
 }

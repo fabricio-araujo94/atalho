@@ -23,7 +23,7 @@ impl DefaultIndexer {
 
     /// Creates a new [`DefaultIndexer`] populated with the provided applications and commands.
     #[must_use]
-    pub fn with_entries(apps: Vec<AppEntry>, commands: Vec<CommandEntry>) -> Self {
+    pub const fn with_entries(apps: Vec<AppEntry>, commands: Vec<CommandEntry>) -> Self {
         Self {
             preloaded_apps: apps,
             preloaded_commands: commands,

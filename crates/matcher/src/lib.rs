@@ -52,7 +52,9 @@ impl FuzzyMatcher {
         let mut target_chars = target_lower.char_indices().enumerate();
 
         for q_char in query_lower.chars() {
-            let found = target_chars.by_ref().find(|(_, (_, t_char))| *t_char == q_char);
+            let found = target_chars
+                .by_ref()
+                .find(|(_, (_, t_char))| *t_char == q_char);
             match found {
                 Some((char_idx, _)) => indices.push(char_idx),
                 None => return None,
@@ -69,7 +71,10 @@ impl Matcher for FuzzyMatcher {
 
         for app in apps {
             let title_match = Self::score_text(query, &app.name);
-            let keyword_match = app.keywords.iter().find_map(|kw| Self::score_text(query, kw));
+            let keyword_match = app
+                .keywords
+                .iter()
+                .find_map(|kw| Self::score_text(query, kw));
 
             let match_data = match (title_match, keyword_match) {
                 (Some((score, indices)), _) => Some((score, indices)),
@@ -78,11 +83,12 @@ impl Matcher for FuzzyMatcher {
             };
 
             if let Some((score, indices)) = match_data {
-                results.push(SearchResult::from_app(app.clone(), score).with_match_indices(indices));
+                results
+                    .push(SearchResult::from_app(app.clone(), score).with_match_indices(indices));
             }
         }
 
-        results.sort_by(|a, b| b.score.cmp(&a.score));
+        results.sort_by_key(|a| std::cmp::Reverse(a.score));
         Ok(results)
     }
 
@@ -91,7 +97,10 @@ impl Matcher for FuzzyMatcher {
 
         for cmd in commands {
             let title_match = Self::score_text(query, &cmd.title);
-            let keyword_match = cmd.keywords.iter().find_map(|kw| Self::score_text(query, kw));
+            let keyword_match = cmd
+                .keywords
+                .iter()
+                .find_map(|kw| Self::score_text(query, kw));
 
             let match_data = match (title_match, keyword_match) {
                 (Some((score, indices)), _) => Some((score, indices)),
@@ -100,11 +109,13 @@ impl Matcher for FuzzyMatcher {
             };
 
             if let Some((score, indices)) = match_data {
-                results.push(SearchResult::from_command(cmd.clone(), score).with_match_indices(indices));
+                results.push(
+                    SearchResult::from_command(cmd.clone(), score).with_match_indices(indices),
+                );
             }
         }
 
-        results.sort_by(|a, b| b.score.cmp(&a.score));
+        results.sort_by_key(|a| std::cmp::Reverse(a.score));
         Ok(results)
     }
 }

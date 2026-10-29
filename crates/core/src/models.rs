@@ -1,7 +1,7 @@
 //! Core domain models representing applications, commands, search hits, and relevance scoring.
 
-use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 /// Numerical relevance score assigned to search matches.
 ///
@@ -50,7 +50,11 @@ pub struct AppEntry {
 impl AppEntry {
     /// Creates a new [`AppEntry`] with required fields and empty defaults for optional metadata.
     #[must_use]
-    pub fn new(id: impl Into<String>, name: impl Into<String>, exec_path: impl Into<PathBuf>) -> Self {
+    pub fn new(
+        id: impl Into<String>,
+        name: impl Into<String>,
+        exec_path: impl Into<PathBuf>,
+    ) -> Self {
         Self {
             id: id.into(),
             name: name.into(),
@@ -103,7 +107,11 @@ pub struct CommandEntry {
 impl CommandEntry {
     /// Creates a new [`CommandEntry`] with required fields and empty defaults for optional metadata.
     #[must_use]
-    pub fn new(id: impl Into<String>, title: impl Into<String>, command: impl Into<String>) -> Self {
+    pub fn new(
+        id: impl Into<String>,
+        title: impl Into<String>,
+        command: impl Into<String>,
+    ) -> Self {
         Self {
             id: id.into(),
             title: title.into(),
