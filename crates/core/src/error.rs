@@ -69,6 +69,12 @@ impl AppError {
     pub fn platform_failed(message: impl Into<String>) -> Self {
         Self::PlatformFailed(message.into())
     }
+
+    /// Creates an [`AppError::PlatformFailed`] indicating unsupported platform operation.
+    #[must_use]
+    pub fn unsupported_platform() -> Self {
+        Self::PlatformFailed("Operation not supported on this platform".to_string())
+    }
 }
 
 /// Convenience alias for [`std::result::Result`] specialized with [`AppError`].
@@ -87,7 +93,10 @@ mod tests {
         assert_eq!(err.to_string(), "Match failed: invalid query syntax");
 
         let err = AppError::execution_failed("process permission denied");
-        assert_eq!(err.to_string(), "Execution failed: process permission denied");
+        assert_eq!(
+            err.to_string(),
+            "Execution failed: process permission denied"
+        );
 
         let err = AppError::platform_failed("registry key missing");
         assert_eq!(err.to_string(), "Platform failed: registry key missing");

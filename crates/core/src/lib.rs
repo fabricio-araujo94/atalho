@@ -9,6 +9,7 @@
 
 mod error;
 mod models;
+pub mod platform;
 mod traits;
 
 // Re-export standard library core modules so macros (like `async_trait`) that emit `core::...`
@@ -21,4 +22,8 @@ pub use ::core::{
 
 pub use error::{AppError, Result};
 pub use models::{AppEntry, CommandEntry, Score, SearchItem, SearchResult};
+pub use platform::{
+    ForegroundManager, GlobalHotkey, HotkeyId, HotkeyModifiers, Hwnd, Key, KeyCode, Mods,
+    WindowHelper,
+};
 pub use traits::{Executor, Indexer, Matcher, Persistence};
