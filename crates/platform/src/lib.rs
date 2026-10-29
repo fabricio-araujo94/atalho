@@ -3,12 +3,30 @@
 //! Provides platform discovery, native process launch utilities, and Windows API
 //! integrations gated behind `cfg(windows)`.
 
+use core::{
+    AppError, ForegroundManager, GlobalHotkey, HotkeyId, HotkeyModifiers, Hwnd, KeyCode, Result,
+    WindowHelper,
+};
 use std::path::{Path, PathBuf};
-use core::{AppError, Result};
+
+#[cfg(windows)]
+pub mod windows;
+
+#[cfg(windows)]
+pub use windows::{
+    WindowsForegroundManager, WindowsGlobalHotkey, WindowsWindowHelper, to_win32_modifiers,
+    to_win32_vk, win32_result,
+};
+
+#[cfg(not(windows))]
+pub mod stub;
+
+#[cfg(not(windows))]
+pub use stub::{StubForegroundManager, StubGlobalHotkey, StubWindowHelper};
 
 #[cfg(windows)]
 mod windows_impl {
-    use super::*;
+    use std::path::PathBuf;
 
     /// Returns standard Windows application shortcut directory paths (Start Menu programs).
     #[must_use]
@@ -55,14 +73,42 @@ pub enum PlatformKind {
 }
 
 /// Platform abstraction service providing OS-level capabilities.
-#[derive(Debug, Default, Clone, Copy)]
-pub struct PlatformManager;
+#[derive(Debug, Default, Clone)]
+pub struct PlatformManager {
+    #[cfg(windows)]
+    hotkey: WindowsGlobalHotkey,
+    #[cfg(windows)]
+    window: WindowsWindowHelper,
+    #[cfg(windows)]
+    foreground: WindowsForegroundManager,
+
+    #[cfg(not(windows))]
+    hotkey: StubGlobalHotkey,
+    #[cfg(not(windows))]
+    window: StubWindowHelper,
+    #[cfg(not(windows))]
+    foreground: StubForegroundManager,
+}
 
 impl PlatformManager {
     /// Creates a new [`PlatformManager`].
     #[must_use]
     pub const fn new() -> Self {
-        Self
+        Self {
+            #[cfg(windows)]
+            hotkey: WindowsGlobalHotkey::new(),
+            #[cfg(windows)]
+            window: WindowsWindowHelper::new(),
+            #[cfg(windows)]
+            foreground: WindowsForegroundManager::new(),
+
+            #[cfg(not(windows))]
+            hotkey: StubGlobalHotkey::new(),
+            #[cfg(not(windows))]
+            window: StubWindowHelper::new(),
+            #[cfg(not(windows))]
+            foreground: StubForegroundManager::new(),
+        }
     }
 
     /// Returns the active operating system kind.
@@ -104,9 +150,43 @@ impl PlatformManager {
         let mut cmd = std::process::Command::new(path);
         cmd.args(args);
 
-        cmd.spawn()
-            .map(|_| ())
-            .map_err(|err| AppError::platform_failed(format!("Failed to spawn {}: {err}", path.display())))
+        cmd.spawn().map(|_| ()).map_err(|err| {
+            AppError::platform_failed(format!("Failed to spawn {}: {err}", path.display()))
+        })
+    }
+}
+
+impl GlobalHotkey for PlatformManager {
+    fn register(&mut self, mods: HotkeyModifiers, key: KeyCode) -> Result<()> {
+        self.hotkey.register(mods, key)
+    }
+
+    fn unregister(&mut self, id: HotkeyId) -> Result<()> {
+        self.hotkey.unregister(id)
+    }
+}
+
+impl WindowHelper for PlatformManager {
+    fn set_borderless(&mut self, hwnd: Hwnd) -> Result<()> {
+        self.window.set_borderless(hwnd)
+    }
+
+    fn center_on_primary_monitor(&self) -> Result<()> {
+        self.window.center_on_primary_monitor()
+    }
+
+    fn set_topmost(&self, topmost: bool) -> Result<()> {
+        self.window.set_topmost(topmost)
+    }
+
+    fn focus(&self) -> Result<()> {
+        self.window.focus()
+    }
+}
+
+impl ForegroundManager for PlatformManager {
+    fn bring_to_front(&self, hwnd: Hwnd) -> Result<()> {
+        self.foreground.bring_to_front(hwnd)
     }
 }
 
@@ -132,6 +212,5 @@ mod tests {
     fn test_search_paths_non_empty() {
         let manager = PlatformManager::new();
         let _paths = manager.application_search_paths();
-        // Just verify it runs cleanly without panicking
     }
 }
