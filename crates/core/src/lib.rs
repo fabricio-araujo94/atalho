@@ -8,6 +8,7 @@
 //! I/O, UI frameworks, or platform-specific libraries.
 
 mod error;
+pub mod indexer;
 mod models;
 pub mod platform;
 mod traits;
@@ -17,13 +18,16 @@ mod traits;
 #[doc(hidden)]
 pub use ::core::{
     clone, cmp, convert, default, fmt, future, hash, hint, iter, marker, mem, ops, option, pin,
-    ptr, result, slice, str, task,
+    prelude, ptr, result, slice, str, task,
 };
 
 pub use error::{AppError, Result};
-pub use models::{AppEntry, CommandEntry, Score, SearchItem, SearchResult};
+pub use indexer::Indexer;
+pub use models::{
+    AppEntry, AppSource, CommandEntry, Score, SearchItem, SearchResult, normalize_name,
+};
 pub use platform::{
     ForegroundManager, GlobalHotkey, HotkeyId, HotkeyModifiers, Hwnd, Key, KeyCode, Mods,
     WindowHelper,
 };
-pub use traits::{Executor, Indexer, Matcher, Persistence};
+pub use traits::{Executor, Matcher, Persistence};

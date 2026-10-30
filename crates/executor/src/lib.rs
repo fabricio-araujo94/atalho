@@ -32,8 +32,13 @@ impl SystemExecutor {
 #[async_trait::async_trait]
 impl Executor for SystemExecutor {
     async fn execute_app(&self, app: &AppEntry) -> Result<()> {
+        let args: Vec<String> = app
+            .arguments
+            .as_ref()
+            .map(|s| vec![s.clone()])
+            .unwrap_or_default();
         self.platform
-            .launch_executable(&app.exec_path, &[])
+            .launch_executable(&app.executable_path, &args)
             .map_err(|err| {
                 AppError::execution_failed(format!(
                     "Failed to execute application '{}': {err}",

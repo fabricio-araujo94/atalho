@@ -103,8 +103,8 @@ mod tests {
         let mut state = LauncherState::new();
         assert_eq!(state.selected_result(), None);
 
-        let app1 = AppEntry::new("app1", "First App", "/bin/first");
-        let app2 = AppEntry::new("app2", "Second App", "/bin/second");
+        let app1 = AppEntry::new("First App", "/bin/first", core::AppSource::Path);
+        let app2 = AppEntry::new("Second App", "/bin/second", core::AppSource::Path);
         let results = vec![
             SearchResult::from_app(app1, Score::new(100)),
             SearchResult::from_app(app2, Score::new(50)),

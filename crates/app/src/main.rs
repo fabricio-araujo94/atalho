@@ -3,7 +3,7 @@
 //! Composition root that initializes workspace components, loads indexed applications,
 //! and runs the desktop launcher interface.
 
-use core::{AppEntry, CommandEntry, Matcher};
+use core::{AppEntry, AppSource, CommandEntry, Matcher};
 use executor::SystemExecutor;
 use indexer::DefaultIndexer;
 use matcher::FuzzyMatcher;
@@ -18,10 +18,10 @@ fn main() {
     println!("Platform detected: {:?}", platform.platform_kind());
 
     let sample_apps = vec![
-        AppEntry::new("calculator", "Calculator", "calc.exe")
+        AppEntry::new("Calculator", "calc.exe", AppSource::StartMenu)
             .with_description("Perform mathematical calculations")
             .with_keywords(["math", "calc"]),
-        AppEntry::new("notepad", "Notepad", "notepad.exe")
+        AppEntry::new("Notepad", "notepad.exe", AppSource::StartMenu)
             .with_description("Simple plain-text editor")
             .with_keywords(["editor", "text"]),
     ];

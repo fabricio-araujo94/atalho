@@ -80,7 +80,11 @@ mod tests {
     #[test]
     fn test_save_and_load_apps() {
         let persistence = InMemoryPersistence::new();
-        let apps = vec![AppEntry::new("editor", "Editor", "/bin/editor")];
+        let apps = vec![AppEntry::new(
+            "Editor",
+            "/bin/editor",
+            core::AppSource::Path,
+        )];
 
         assert!(block_on(persistence.save_apps(&apps)).is_ok());
         let loaded = block_on(persistence.load_apps()).unwrap_or_default();

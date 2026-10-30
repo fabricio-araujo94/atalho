@@ -3,22 +3,6 @@
 use crate::error::Result;
 use crate::models::{AppEntry, CommandEntry, SearchItem, SearchResult};
 
-/// Contract for scanning and producing indexed applications and system commands.
-#[async_trait::async_trait]
-pub trait Indexer: Send + Sync {
-    /// Discovers and indexes all available desktop application entries.
-    ///
-    /// # Errors
-    /// Returns [`crate::error::AppError::IndexingFailed`] if application scanning fails.
-    async fn index_apps(&self) -> Result<Vec<AppEntry>>;
-
-    /// Discovers and indexes all available system or custom command entries.
-    ///
-    /// # Errors
-    /// Returns [`crate::error::AppError::IndexingFailed`] if command discovery fails.
-    async fn index_commands(&self) -> Result<Vec<CommandEntry>>;
-}
-
 /// Contract for fuzzy matching and ranking search queries against candidate entries.
 pub trait Matcher: Send + Sync {
     /// Matches and scores a query against a slice of candidate applications.

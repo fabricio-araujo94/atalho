@@ -123,18 +123,19 @@ impl Matcher for FuzzyMatcher {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use core::AppSource;
 
     #[test]
     fn test_exact_and_prefix_matching() {
         let matcher = FuzzyMatcher::new();
         let apps = vec![
-            AppEntry::new("firefox", "Firefox", "/bin/firefox"),
-            AppEntry::new("firewall", "Firewall Configuration", "/bin/firewall"),
-            AppEntry::new("terminal", "Terminal", "/bin/bash"),
+            AppEntry::new("Firefox", "/bin/firefox", AppSource::Path),
+            AppEntry::new("Firewall Configuration", "/bin/firewall", AppSource::Path),
+            AppEntry::new("Terminal", "/bin/bash", AppSource::Path),
         ];
 
         let results = matcher.match_apps("Firefox", &apps).unwrap_or_default();
-        assert_eq!(results.first().map(|r| r.id.as_str()), Some("firefox"));
+        assert_eq!(results.first().map(|r| r.title.as_str()), Some("Firefox"));
         assert_eq!(results.first().map(|r| r.score.value()), Some(1000));
 
         let prefix_results = matcher.match_apps("Fire", &apps).unwrap_or_default();
@@ -144,7 +145,7 @@ mod tests {
     #[test]
     fn test_search_combines_apps_and_commands() {
         let matcher = FuzzyMatcher::new();
-        let apps = vec![AppEntry::new("calc", "Calculator", "/bin/calc")];
+        let apps = vec![AppEntry::new("Calculator", "/bin/calc", AppSource::Path)];
         let commands = vec![CommandEntry::new("calc-cmd", "Calculate Sum", "calc")];
 
         let results = matcher.search("Calc", &apps, &commands).unwrap_or_default();

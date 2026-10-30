@@ -1,7 +1,8 @@
 //! Core domain models representing applications, commands, search hits, and relevance scoring.
 
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use uuid::Uuid;
 
 /// Numerical relevance score assigned to search matches.
 ///
@@ -30,45 +31,87 @@ impl Score {
     }
 }
 
+/// Origin source from which an application entry was discovered.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum AppSource {
+    /// Discovered from Windows Start Menu shortcuts.
+    StartMenu,
+    /// Discovered from system PATH directories.
+    #[serde(rename = "PATH")]
+    Path,
+    /// Discovered from user or public desktop shortcuts.
+    Desktop,
+    /// Manually pinned by the user.
+    UserPinned,
+}
+
+/// Produces a normalized lookup string for an application name by converting to lowercase
+/// and removing ASCII punctuation characters.
+#[must_use]
+pub fn normalize_name(name: &str) -> String {
+    name.chars()
+        .filter(|c| !c.is_ascii_punctuation())
+        .flat_map(char::to_lowercase)
+        .collect()
+}
+
 /// Represents an indexed desktop application available for launching.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AppEntry {
-    /// Unique identifier for this application entry (e.g., path or desktop ID).
-    pub id: String,
+    /// Unique identifier for this application entry.
+    pub id: Uuid,
     /// Human-readable display name of the application.
     pub name: String,
+    /// Normalized name used for deduplication and matching (lowercase, no punctuation).
+    pub normalized_name: String,
     /// Absolute or resolvable path to the application executable or desktop file.
-    pub exec_path: PathBuf,
-    /// Optional human-readable description of the application.
-    pub description: Option<String>,
+    pub executable_path: PathBuf,
+    /// Optional command-line arguments to pass when executing this application.
+    pub arguments: Option<String>,
     /// Optional path to the application icon image file.
     pub icon_path: Option<PathBuf>,
+    /// Origin source where the application was discovered.
+    pub source: AppSource,
+    /// Optional human-readable description of the application.
+    pub description: Option<String>,
     /// Optional search keywords or aliases used to match this application.
     pub keywords: Vec<String>,
 }
 
 impl AppEntry {
-    /// Creates a new [`AppEntry`] with required fields and empty defaults for optional metadata.
+    /// Creates a new [`AppEntry`] with required fields and defaults for optional metadata.
     #[must_use]
     pub fn new(
-        id: impl Into<String>,
         name: impl Into<String>,
-        exec_path: impl Into<PathBuf>,
+        executable_path: impl Into<PathBuf>,
+        source: AppSource,
     ) -> Self {
+        let name_str = name.into();
+        let normalized = normalize_name(&name_str);
         Self {
-            id: id.into(),
-            name: name.into(),
-            exec_path: exec_path.into(),
-            description: None,
+            id: Uuid::new_v4(),
+            name: name_str,
+            normalized_name: normalized,
+            executable_path: executable_path.into(),
+            arguments: None,
             icon_path: None,
+            source,
+            description: None,
             keywords: Vec::new(),
         }
     }
 
-    /// Sets the optional human-readable description for the application.
+    /// Sets the unique ID for this entry.
     #[must_use]
-    pub fn with_description(mut self, description: impl Into<String>) -> Self {
-        self.description = Some(description.into());
+    pub const fn with_id(mut self, id: Uuid) -> Self {
+        self.id = id;
+        self
+    }
+
+    /// Sets optional command-line arguments for launching this application.
+    #[must_use]
+    pub fn with_arguments(mut self, arguments: impl Into<String>) -> Self {
+        self.arguments = Some(arguments.into());
         self
     }
 
@@ -79,11 +122,24 @@ impl AppEntry {
         self
     }
 
+    /// Sets the optional human-readable description for the application.
+    #[must_use]
+    pub fn with_description(mut self, description: impl Into<String>) -> Self {
+        self.description = Some(description.into());
+        self
+    }
+
     /// Adds search keywords or aliases to the application.
     #[must_use]
     pub fn with_keywords(mut self, keywords: impl IntoIterator<Item = impl Into<String>>) -> Self {
         self.keywords.extend(keywords.into_iter().map(Into::into));
         self
+    }
+
+    /// Returns a reference to the executable path.
+    #[must_use]
+    pub fn exec_path(&self) -> &Path {
+        &self.executable_path
     }
 }
 
@@ -175,7 +231,7 @@ impl SearchResult {
     #[must_use]
     pub fn from_app(app: AppEntry, score: Score) -> Self {
         Self {
-            id: app.id.clone(),
+            id: app.id.to_string(),
             title: app.name.clone(),
             description: app.description.clone(),
             score,
@@ -220,12 +276,13 @@ mod tests {
 
     #[test]
     fn test_app_entry_builder() {
-        let app = AppEntry::new("vscode", "Visual Studio Code", "/usr/bin/code")
+        let app = AppEntry::new("Visual Studio Code", "/usr/bin/code", AppSource::Path)
             .with_description("Code editing redefined")
             .with_keywords(["editor", "development"]);
 
-        assert_eq!(app.id, "vscode");
         assert_eq!(app.name, "Visual Studio Code");
+        assert_eq!(app.normalized_name, "visual studio code");
+        assert_eq!(app.source, AppSource::Path);
         assert_eq!(app.description.as_deref(), Some("Code editing redefined"));
         assert_eq!(app.keywords, vec!["editor", "development"]);
     }
@@ -242,7 +299,7 @@ mod tests {
 
     #[test]
     fn test_search_result_constructors() {
-        let app = AppEntry::new("terminal", "Terminal", "/bin/bash");
+        let app = AppEntry::new("Terminal", "/bin/bash", AppSource::Path);
         let result = SearchResult::from_app(app, Score::new(85)).with_match_indices(vec![0, 1, 2]);
 
         assert_eq!(result.title, "Terminal");
