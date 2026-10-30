@@ -1,85 +1,121 @@
 //! Application and command indexing engine for Atalho.
 //!
-//! Provides concrete implementations of [`core::Indexer`] to scan installed desktop
-//! applications and discovered command actions.
+//! Discovers launchable applications from Windows Start Menu, PATH, and Desktop sources,
+//! producing normalized and deduplicated lists of [`core::AppEntry`].
+
+pub mod composite;
+pub mod desktop;
+pub mod path;
+pub mod shortcut;
+pub mod start_menu;
+
+pub use composite::CompositeIndexer;
+pub use desktop::DesktopIndexer;
+pub use path::PathIndexer;
+pub use shortcut::ShortcutInfo;
+pub use start_menu::StartMenuIndexer;
 
 use core::{AppEntry, CommandEntry, Indexer, Result};
 
-/// Default application and command indexer implementation.
+/// Default application indexer combining concrete system indexers with optional in-memory caching.
 #[derive(Debug, Default, Clone)]
 pub struct DefaultIndexer {
-    /// In-memory cache or preloaded applications.
+    composite: CompositeIndexer,
     preloaded_apps: Vec<AppEntry>,
-    /// In-memory cache or preloaded commands.
-    preloaded_commands: Vec<CommandEntry>,
 }
 
 impl DefaultIndexer {
-    /// Creates a new, empty [`DefaultIndexer`].
+    /// Creates a new, empty [`DefaultIndexer`] backed by [`CompositeIndexer`].
     #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Creates a new [`DefaultIndexer`] populated with the provided applications and commands.
+    /// Creates a new [`DefaultIndexer`] pre-populated with provided entries (useful for testing).
     #[must_use]
-    pub const fn with_entries(apps: Vec<AppEntry>, commands: Vec<CommandEntry>) -> Self {
+    pub fn with_entries(apps: Vec<AppEntry>, _commands: Vec<CommandEntry>) -> Self {
         Self {
+            composite: CompositeIndexer::default(),
             preloaded_apps: apps,
-            preloaded_commands: commands,
         }
     }
 }
 
 #[async_trait::async_trait]
 impl Indexer for DefaultIndexer {
-    async fn index_apps(&self) -> Result<Vec<AppEntry>> {
-        Ok(self.preloaded_apps.clone())
-    }
-
-    async fn index_commands(&self) -> Result<Vec<CommandEntry>> {
-        Ok(self.preloaded_commands.clone())
+    async fn scan(&self) -> Result<Vec<AppEntry>> {
+        if !self.preloaded_apps.is_empty() {
+            return Ok(self.preloaded_apps.clone());
+        }
+        self.composite.scan().await
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::future::Future;
-    use std::pin::pin;
-    use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
+    use core::AppSource;
+    use std::path::PathBuf;
+    use std::sync::Arc;
 
-    fn block_on<F: Future>(future: F) -> F::Output {
-        fn noop_raw_waker() -> RawWaker {
-            fn no_op(_: *const ()) {}
-            fn clone_waker(_: *const ()) -> RawWaker {
-                noop_raw_waker()
-            }
-            let vtable = &RawWakerVTable::new(clone_waker, no_op, no_op, no_op);
-            RawWaker::new(std::ptr::null(), vtable)
-        }
+    struct MockIndexer {
+        apps: Vec<AppEntry>,
+    }
 
-        let waker = unsafe { Waker::from_raw(noop_raw_waker()) };
-        let mut cx = Context::from_waker(&waker);
-        let mut pinned = pin!(future);
-        match pinned.as_mut().poll(&mut cx) {
-            Poll::Ready(output) => output,
-            Poll::Pending => panic!("Future remained pending"),
+    #[async_trait::async_trait]
+    impl Indexer for MockIndexer {
+        async fn scan(&self) -> Result<Vec<AppEntry>> {
+            Ok(self.apps.clone())
         }
     }
 
-    #[test]
-    fn test_indexer_returns_entries() {
-        let apps = vec![AppEntry::new("test", "Test App", "/bin/test")];
-        let commands = vec![CommandEntry::new("cmd", "Test Cmd", "echo")];
-        let indexer = DefaultIndexer::with_entries(apps.clone(), commands.clone());
+    #[tokio::test]
+    async fn test_composite_indexer_deduplication() {
+        let path = PathBuf::from("C:\\Windows\\notepad.exe");
+        let app1 = AppEntry::new("Notepad", &path, AppSource::StartMenu);
+        let app2 = AppEntry::new("notepad", &path, AppSource::Path);
+        let app3 = AppEntry::new("Calculator", "C:\\Windows\\calc.exe", AppSource::StartMenu);
 
-        let indexed_apps = block_on(indexer.index_apps());
-        assert_eq!(indexed_apps.as_ref().map(Vec::len), Ok(1));
-        assert_eq!(indexed_apps.unwrap_or_default(), apps);
+        let indexer1 = MockIndexer {
+            apps: vec![app1.clone()],
+        };
+        let indexer2 = MockIndexer {
+            apps: vec![app2.clone(), app3.clone()],
+        };
 
-        let indexed_commands = block_on(indexer.index_commands());
-        assert_eq!(indexed_commands.as_ref().map(Vec::len), Ok(1));
-        assert_eq!(indexed_commands.unwrap_or_default(), commands);
+        let composite = CompositeIndexer::new(vec![Arc::new(indexer1), Arc::new(indexer2)]);
+        let results = composite.scan().await.unwrap_or_default();
+
+        // Notepad should be deduplicated (StartMenu preferred over Path)
+        assert_eq!(results.len(), 2);
+        let notepad_entry = results.iter().find(|a| a.normalized_name == "notepad");
+        assert!(notepad_entry.is_some());
+        if let Some(entry) = notepad_entry {
+            assert_eq!(entry.source, AppSource::StartMenu);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_path_indexer_scans_executables() {
+        let temp_dir = std::env::temp_dir().join("atalho_test_path_indexer");
+        let _ = tokio::fs::create_dir_all(&temp_dir).await;
+
+        let exe_file = temp_dir.join("test_app.exe");
+        let bat_file = temp_dir.join("run_script.bat");
+        let txt_file = temp_dir.join("readme.txt");
+
+        let _ = tokio::fs::write(&exe_file, b"binary").await;
+        let _ = tokio::fs::write(&bat_file, b"@echo off").await;
+        let _ = tokio::fs::write(&txt_file, b"notes").await;
+
+        let indexer = PathIndexer::with_paths(vec![temp_dir.clone()]);
+        let results = indexer.scan().await.unwrap_or_default();
+
+        let names: Vec<String> = results.into_iter().map(|a| a.name).collect();
+        assert!(names.contains(&"test_app".to_string()));
+        assert!(names.contains(&"run_script".to_string()));
+        assert!(!names.contains(&"readme".to_string()));
+
+        let _ = tokio::fs::remove_dir_all(&temp_dir).await;
     }
 }
