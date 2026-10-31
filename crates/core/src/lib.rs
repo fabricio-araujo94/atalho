@@ -9,6 +9,7 @@
 
 mod error;
 pub mod indexer;
+pub mod matcher;
 mod models;
 pub mod platform;
 mod traits;
@@ -23,6 +24,7 @@ pub use ::core::{
 
 pub use error::{AppError, Result};
 pub use indexer::Indexer;
+pub use matcher::{Matcher, ScoredMatch};
 pub use models::{
     AppEntry, AppSource, CommandEntry, Score, SearchItem, SearchResult, normalize_name,
 };
@@ -30,4 +32,4 @@ pub use platform::{
     ForegroundManager, GlobalHotkey, HotkeyId, HotkeyModifiers, Hwnd, Key, KeyCode, Mods,
     WindowHelper,
 };
-pub use traits::{Executor, Matcher, Persistence};
+pub use traits::{Executor, Persistence};

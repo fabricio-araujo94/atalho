@@ -37,6 +37,8 @@ uuid = { version = "1.10", features = ["v4", "serde"] }
 dunce = "1.0"
 tokio = { version = "1.40", features = ["full"] }
 tracing = "0.1"
+rayon = "1.10"
+criterion = "0.5"
 
 [workspace.lints.rust]
 warnings = "warn"

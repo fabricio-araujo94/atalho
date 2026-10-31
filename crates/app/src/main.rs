@@ -33,31 +33,33 @@ fn main() {
             .with_keywords(["lock", "screen"]),
     ];
 
-    let indexer = DefaultIndexer::with_entries(sample_apps.clone(), sample_commands.clone());
+    let indexer = DefaultIndexer::with_entries(sample_apps.clone(), sample_commands);
     let matcher = FuzzyMatcher::new();
     let _executor = SystemExecutor::with_platform(platform);
     let _persistence = InMemoryPersistence::new();
     let mut state = LauncherState::new();
 
     // Demonstrate composition and matching
-    match matcher.search("Notepad", &sample_apps, &sample_commands) {
-        Ok(results) => {
-            println!(
-                "Initial search indexing: {} items matched query",
-                results.len()
-            );
-            state.set_results(results);
-            if let Some(selected) = state.selected_result() {
-                println!(
-                    "Top match: {} (score: {})",
-                    selected.title,
-                    selected.score.value()
-                );
-            }
-        }
-        Err(err) => {
-            eprintln!("Search matching failed: {err}");
-        }
+    let results = matcher.search("Notepad", &sample_apps);
+    println!(
+        "Initial search indexing: {} items matched query",
+        results.len()
+    );
+    let search_results: Vec<core::SearchResult> = results
+        .into_iter()
+        .map(|m| {
+            let score_val = u32::try_from(m.score.max(0)).unwrap_or(0);
+            core::SearchResult::from_app(m.entry, core::Score::new(score_val))
+                .with_match_indices(m.match_positions)
+        })
+        .collect();
+    state.set_results(search_results);
+    if let Some(selected) = state.selected_result() {
+        println!(
+            "Top match: {} (score: {})",
+            selected.title,
+            selected.score.value()
+        );
     }
 
     let _ = indexer;

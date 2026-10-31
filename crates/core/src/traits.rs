@@ -3,38 +3,6 @@
 use crate::error::Result;
 use crate::models::{AppEntry, CommandEntry, SearchItem, SearchResult};
 
-/// Contract for fuzzy matching and ranking search queries against candidate entries.
-pub trait Matcher: Send + Sync {
-    /// Matches and scores a query against a slice of candidate applications.
-    ///
-    /// # Errors
-    /// Returns [`crate::error::AppError::MatchFailed`] if query parsing or evaluation fails.
-    fn match_apps(&self, query: &str, apps: &[AppEntry]) -> Result<Vec<SearchResult>>;
-
-    /// Matches and scores a query against a slice of candidate commands.
-    ///
-    /// # Errors
-    /// Returns [`crate::error::AppError::MatchFailed`] if query parsing or evaluation fails.
-    fn match_commands(&self, query: &str, commands: &[CommandEntry]) -> Result<Vec<SearchResult>>;
-
-    /// Matches a search query against both applications and commands, returning combined results sorted by score in descending order.
-    ///
-    /// # Errors
-    /// Returns [`crate::error::AppError::MatchFailed`] if matching fails.
-    fn search(
-        &self,
-        query: &str,
-        apps: &[AppEntry],
-        commands: &[CommandEntry],
-    ) -> Result<Vec<SearchResult>> {
-        let mut results = self.match_apps(query, apps)?;
-        let mut cmd_results = self.match_commands(query, commands)?;
-        results.append(&mut cmd_results);
-        results.sort_by_key(|a| std::cmp::Reverse(a.score));
-        Ok(results)
-    }
-}
-
 /// Contract for launching desktop applications and executing system commands.
 #[async_trait::async_trait]
 pub trait Executor: Send + Sync {
