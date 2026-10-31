@@ -13,6 +13,7 @@ workspace = true
 [dependencies]
 core = { workspace = true }
 rayon = { workspace = true }
+tokio-util = { workspace = true }
 
 [[bench]]
 name = "fuzzy_matcher"

@@ -6,6 +6,7 @@
 use core::{AppEntry, Matcher, ScoredMatch};
 use rayon::prelude::*;
 use std::cell::RefCell;
+use tokio_util::sync::CancellationToken;
 
 // ============================================================================
 // Scoring Constants
@@ -223,20 +224,37 @@ pub const fn is_word_boundary(chars: &[char], idx: usize) -> bool {
 impl Matcher for FuzzyMatcher {
     #[allow(clippy::needless_lifetimes)]
     fn search<'a>(&self, query: &str, entries: &'a [AppEntry]) -> Vec<ScoredMatch> {
+        self.search_with_cancellation(query, entries, &CancellationToken::new())
+            .unwrap_or_default()
+    }
+
+    fn search_with_cancellation(
+        &self,
+        query: &str,
+        entries: &[AppEntry],
+        token: &CancellationToken,
+    ) -> Option<Vec<ScoredMatch>> {
         let trimmed_query = query.trim();
 
         // Architectural Directive 3: Empty query -> return all entries with score 0 (preserving original order)
         if trimmed_query.is_empty() {
-            return entries
-                .iter()
-                .map(|e| ScoredMatch::new(e.clone(), 0, Vec::new()))
-                .collect();
+            let mut matches = Vec::with_capacity(entries.len());
+            for entry in entries {
+                if token.is_cancelled() {
+                    return None;
+                }
+                matches.push(ScoredMatch::new(entry.clone(), 0, Vec::new()));
+            }
+            return Some(matches);
         }
 
         let normalized_query = core::normalize_name(trimmed_query);
 
         let mut matches = Vec::new();
         for entry in entries {
+            if token.is_cancelled() {
+                return None;
+            }
             if let Some((score, match_positions)) =
                 Self::score_candidate(&normalized_query, &entry.name, &entry.normalized_name)
             {
@@ -246,7 +264,7 @@ impl Matcher for FuzzyMatcher {
 
         // Sort descending by score; preserve relative stability on tie
         matches.sort_by_key(|a| std::cmp::Reverse(a.score));
-        matches
+        (!token.is_cancelled()).then_some(matches)
     }
 }
 
@@ -357,6 +375,20 @@ mod tests {
         let matcher = FuzzyMatcher::new();
         let results = matcher.search("xyz", &entries);
         assert_eq!(results.len(), 0);
+    }
+
+    #[test]
+    fn test_search_with_cancelled_token_returns_none() {
+        let entries = vec![make_app("Calculator"), make_app("Notepad")];
+        let matcher = FuzzyMatcher::new();
+        let token = CancellationToken::new();
+        token.cancel();
+
+        assert!(
+            matcher
+                .search_with_cancellation("calc", &entries, &token)
+                .is_none()
+        );
     }
 
     #[test]
