@@ -5,11 +5,13 @@
 
 use core::{AppEntry, AppError, Persistence, Result};
 use std::sync::RwLock;
+use std::time::SystemTime;
 
 /// In-memory thread-safe implementation of [`Persistence`].
 #[derive(Debug, Default)]
 pub struct InMemoryPersistence {
     apps: RwLock<Vec<AppEntry>>,
+    apps_updated_at: RwLock<Option<SystemTime>>,
     launch_history: RwLock<Vec<String>>,
 }
 
@@ -31,6 +33,11 @@ impl Persistence for InMemoryPersistence {
         guard.clear();
         guard.extend_from_slice(apps);
         drop(guard);
+        *self
+            .apps_updated_at
+            .write()
+            .map_err(|err| AppError::io_failed(format!("Lock acquisition error: {err}")))? =
+            Some(SystemTime::now());
         Ok(())
     }
 
@@ -40,6 +47,13 @@ impl Persistence for InMemoryPersistence {
             .read()
             .map_err(|err| AppError::io_failed(format!("Lock acquisition error: {err}")))?;
         Ok(guard.clone())
+    }
+
+    async fn apps_last_updated(&self) -> Result<Option<SystemTime>> {
+        self.apps_updated_at
+            .read()
+            .map(|guard| *guard)
+            .map_err(|err| AppError::io_failed(format!("Lock acquisition error: {err}")))
     }
 
     async fn record_launch(&self, entry_id: &str) -> Result<()> {
