@@ -24,6 +24,22 @@ pub enum AppError {
     PlatformFailed(String),
 }
 
+impl Clone for AppError {
+    fn clone(&self) -> Self {
+        match self {
+            Self::IndexingFailed(message) => Self::IndexingFailed(message.clone()),
+            Self::MatchFailed(message) => Self::MatchFailed(message.clone()),
+            Self::ExecutionFailed(message) => Self::ExecutionFailed(message.clone()),
+            Self::IoFailed(error) => {
+                Self::IoFailed(std::io::Error::new(error.kind(), error.to_string()))
+            }
+            Self::PlatformFailed(message) => Self::PlatformFailed(message.clone()),
+        }
+    }
+}
+
+impl Eq for AppError {}
+
 impl PartialEq for AppError {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
