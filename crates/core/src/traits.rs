@@ -2,6 +2,7 @@
 
 use crate::error::Result;
 use crate::models::{AppEntry, CommandEntry, SearchItem, SearchResult};
+use std::time::SystemTime;
 
 /// Contract for launching desktop applications and executing system commands.
 #[async_trait::async_trait]
@@ -44,6 +45,14 @@ pub trait Persistence: Send + Sync {
     /// # Errors
     /// Returns [`crate::error::AppError::IoFailed`] if loading or deserialization fails.
     async fn load_apps(&self) -> Result<Vec<AppEntry>>;
+
+    /// Returns when the persisted application index was last refreshed.
+    ///
+    /// Implementations without freshness metadata may return `None`; callers should
+    /// treat that cache as stale and rebuild it.
+    async fn apps_last_updated(&self) -> Result<Option<SystemTime>> {
+        Ok(None)
+    }
 
     /// Asynchronously records the execution of an entry in launch history.
     ///
