@@ -12,3 +12,11 @@ workspace = true
 
 [dependencies]
 core = { workspace = true }
+rayon = { workspace = true }
+
+[[bench]]
+name = "fuzzy_matcher"
+harness = false
+
+[dev-dependencies]
+criterion = { workspace = true }
