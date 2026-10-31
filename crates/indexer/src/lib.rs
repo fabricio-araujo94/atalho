@@ -16,6 +16,7 @@ pub use shortcut::ShortcutInfo;
 pub use start_menu::StartMenuIndexer;
 
 use core::{AppEntry, CommandEntry, Indexer, Result};
+use tokio_util::sync::CancellationToken;
 
 /// Default application indexer combining concrete system indexers with optional in-memory caching.
 #[derive(Debug, Default, Clone)]
@@ -44,10 +45,23 @@ impl DefaultIndexer {
 #[async_trait::async_trait]
 impl Indexer for DefaultIndexer {
     async fn scan(&self) -> Result<Vec<AppEntry>> {
-        if !self.preloaded_apps.is_empty() {
-            return Ok(self.preloaded_apps.clone());
+        Ok(self
+            .scan_with_cancellation(CancellationToken::new())
+            .await?
+            .unwrap_or_default())
+    }
+
+    async fn scan_with_cancellation(
+        &self,
+        token: CancellationToken,
+    ) -> Result<Option<Vec<AppEntry>>> {
+        if token.is_cancelled() {
+            return Ok(None);
         }
-        self.composite.scan().await
+        if !self.preloaded_apps.is_empty() {
+            return Ok(Some(self.preloaded_apps.clone()));
+        }
+        self.composite.scan_with_cancellation(token).await
     }
 }
 

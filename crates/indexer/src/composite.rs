@@ -5,6 +5,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::task::JoinSet;
+use tokio_util::sync::CancellationToken;
 use tracing::warn;
 
 use crate::desktop::DesktopIndexer;
@@ -63,19 +64,38 @@ impl CompositeIndexer {
 #[async_trait::async_trait]
 impl Indexer for CompositeIndexer {
     async fn scan(&self) -> Result<Vec<AppEntry>> {
+        Ok(self
+            .scan_with_cancellation(CancellationToken::new())
+            .await?
+            .unwrap_or_default())
+    }
+
+    async fn scan_with_cancellation(
+        &self,
+        token: CancellationToken,
+    ) -> Result<Option<Vec<AppEntry>>> {
         let mut join_set = JoinSet::new();
 
         for indexer in &self.indexers {
             let idx = Arc::clone(indexer);
-            join_set.spawn(async move { idx.scan().await });
+            let child_token = token.clone();
+            join_set.spawn(async move { idx.scan_with_cancellation(child_token).await });
         }
 
         let mut all_entries = Vec::new();
 
         while let Some(res) = join_set.join_next().await {
+            if token.is_cancelled() {
+                join_set.abort_all();
+                return Ok(None);
+            }
             match res {
-                Ok(Ok(entries)) => {
+                Ok(Ok(Some(entries))) => {
                     all_entries.extend(entries);
+                }
+                Ok(Ok(None)) => {
+                    join_set.abort_all();
+                    return Ok(None);
                 }
                 Ok(Err(err)) => {
                     warn!("Indexer scan returned error: {err}");
@@ -94,12 +114,15 @@ impl Indexer for CompositeIndexer {
         let mut deduped_entries = Vec::with_capacity(all_entries.len());
 
         for entry in all_entries {
+            if token.is_cancelled() {
+                return Ok(None);
+            }
             let key = (entry.normalized_name.clone(), entry.executable_path.clone());
             if seen.insert(key) {
                 deduped_entries.push(entry);
             }
         }
 
-        Ok(deduped_entries)
+        Ok(Some(deduped_entries))
     }
 }

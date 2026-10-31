@@ -1,7 +1,8 @@
 //! System PATH application indexer.
 
-use core::{AppEntry, AppSource, Indexer, Result};
+use core::{AppEntry, AppError, AppSource, Indexer, Result};
 use std::path::PathBuf;
+use tokio_util::sync::CancellationToken;
 use tracing::debug;
 
 /// Set of supported executable file extensions on Windows.
@@ -58,10 +59,28 @@ impl PathIndexer {
 #[async_trait::async_trait]
 impl Indexer for PathIndexer {
     async fn scan(&self) -> Result<Vec<AppEntry>> {
-        let directories = self.resolve_paths();
+        Ok(self
+            .scan_with_cancellation(CancellationToken::new())
+            .await?
+            .unwrap_or_default())
+    }
+
+    async fn scan_with_cancellation(
+        &self,
+        token: CancellationToken,
+    ) -> Result<Option<Vec<AppEntry>>> {
+        let indexer = self.clone();
+        let directories = tokio::task::spawn_blocking(move || indexer.resolve_paths())
+            .await
+            .map_err(|err| {
+                AppError::execution_failed(format!("PATH resolution task failed: {err}"))
+            })?;
         let mut apps = Vec::new();
 
         for dir in directories {
+            if token.is_cancelled() {
+                return Ok(None);
+            }
             let mut read_dir = match tokio::fs::read_dir(&dir).await {
                 Ok(rd) => rd,
                 Err(err) => {
@@ -71,6 +90,9 @@ impl Indexer for PathIndexer {
             };
 
             while let Ok(Some(entry)) = read_dir.next_entry().await {
+                if token.is_cancelled() {
+                    return Ok(None);
+                }
                 let path = entry.path();
                 let file_type = match entry.file_type().await {
                     Ok(ft) => ft,
@@ -95,12 +117,12 @@ impl Indexer for PathIndexer {
                         continue;
                     }
 
-                    let canonical = dunce::canonicalize(&path).unwrap_or(path);
+                    let canonical = tokio::fs::canonicalize(&path).await.unwrap_or(path);
                     apps.push(AppEntry::new(file_stem, canonical, AppSource::Path));
                 }
             }
         }
 
-        Ok(apps)
+        Ok(Some(apps))
     }
 }
