@@ -99,6 +99,7 @@ checksum = "940b3a0ca603d1eade50a4846a2afffd5ef57a9feac2c0e2ec2e14f9ead76000"
 name = "app"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "core",
  "executor",
  "iced",
@@ -106,6 +107,9 @@ dependencies = [
  "matcher",
  "persistence",
  "platform",
+ "tokio",
+ "tokio-util",
+ "tracing",
  "ui",
 ]
 
@@ -583,6 +587,7 @@ dependencies = [
  "async-trait",
  "serde",
  "thiserror 2.0.21",
+ "tokio-util",
  "uuid",
 ]
 
@@ -1520,6 +1525,7 @@ dependencies = [
  "core",
  "dunce",
  "tokio",
+ "tokio-util",
  "tracing",
  "windows 0.58.0",
 ]
@@ -1770,6 +1776,7 @@ dependencies = [
  "core",
  "criterion",
  "rayon",
+ "tokio-util",
 ]
 
 [[package]]
@@ -3251,6 +3258,19 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.9",
+]
+
+[[package]]
+name = "tokio-util"
+version = "0.7.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e464cf451ba96ebfc6f9b6542f17ee8b8956e33f1e40d9690624e59d7a7f8a4b"
+dependencies = [
+ "bytes",
+ "futures-core",
+ "futures-sink",
+ "pin-project-lite",
+ "tokio",
 ]
 
 [[package]]
