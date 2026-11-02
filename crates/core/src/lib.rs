@@ -7,6 +7,7 @@
 //! and defines abstract traits for dependency inversion without coupling to concrete
 //! I/O, UI frameworks, or platform-specific libraries.
 
+mod config;
 mod error;
 pub mod indexer;
 pub mod matcher;
@@ -22,6 +23,7 @@ pub use ::core::{
     prelude, ptr, result, slice, str, task, write,
 };
 
+pub use config::{AppConfig, SourceToggle, ThemeName};
 pub use error::{AppError, Result};
 pub use indexer::Indexer;
 pub use matcher::{Matcher, ScoredMatch, SearchRequest, SearchResponse};
