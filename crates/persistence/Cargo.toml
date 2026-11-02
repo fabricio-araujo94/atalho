@@ -7,6 +7,9 @@ license.workspace = true
 readme = "README.md"
 description = "State, preferences, and history persistence layer for Atalho"
 
+[features]
+test-utils = []
+
 [lints]
 workspace = true
 

@@ -7,6 +7,11 @@ use core::{AppEntry, AppError, Persistence, Result};
 use std::sync::RwLock;
 use std::time::SystemTime;
 
+mod disk;
+pub use disk::FilePersistence;
+#[cfg(any(test, feature = "test-utils"))]
+pub use disk::{InMemoryCache, InMemoryHistory};
+
 /// In-memory thread-safe implementation of [`Persistence`].
 #[derive(Debug, Default)]
 pub struct InMemoryPersistence {
