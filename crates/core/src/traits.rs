@@ -1,8 +1,56 @@
 //! Core domain contracts defining the primary abstraction boundaries for Atalho.
 
+use crate::config::AppConfig;
 use crate::error::Result;
 use crate::models::{AppEntry, CommandEntry, SearchItem, SearchResult};
+use std::collections::HashMap;
 use std::time::SystemTime;
+use uuid::Uuid;
+
+/// Metadata describing the last persisted application index.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CacheMetadata {
+    /// Time at which the cache was last written.
+    pub timestamp: SystemTime,
+    /// Number of application entries in the cache.
+    pub count: usize,
+}
+
+/// Storage contract for the serialized application index.
+#[async_trait::async_trait]
+pub trait IndexCache: Send + Sync {
+    /// Loads the application index, or returns `None` when no cache exists.
+    async fn load(&self) -> Result<Option<Vec<AppEntry>>>;
+    /// Atomically stores the application index.
+    async fn save(&self, entries: &[AppEntry]) -> Result<()>;
+    /// Returns metadata for the stored index.
+    async fn metadata(&self) -> Result<CacheMetadata>;
+}
+
+/// Storage contract for application launch history.
+#[async_trait::async_trait]
+pub trait History: Send + Sync {
+    /// Appends a launch event for an application.
+    async fn record(&self, entry_id: Uuid) -> Result<()>;
+    /// Returns application IDs from newest to oldest.
+    async fn recent(&self, limit: usize) -> Result<Vec<Uuid>>;
+    /// Returns launch counts keyed by application ID.
+    async fn frequency(&self) -> Result<HashMap<Uuid, u32>>;
+}
+
+/// Storage contract for application configuration.
+pub trait Config: Send + Sync {
+    /// Loads configuration, returning defaults when no file exists.
+    ///
+    /// # Errors
+    /// Returns an I/O error when the configuration file cannot be read or parsed.
+    fn load(&self) -> Result<AppConfig>;
+    /// Atomically saves configuration.
+    ///
+    /// # Errors
+    /// Returns an I/O error when configuration cannot be serialized or written.
+    fn save(&self, cfg: &AppConfig) -> Result<()>;
+}
 
 /// Contract for launching desktop applications and executing system commands.
 #[async_trait::async_trait]

@@ -34,4 +34,4 @@ pub use platform::{
     ForegroundManager, GlobalHotkey, HotkeyId, HotkeyModifiers, Hwnd, Key, KeyCode, Mods,
     WindowHelper,
 };
-pub use traits::{Executor, Persistence};
+pub use traits::{CacheMetadata, Config, Executor, History, IndexCache, Persistence};
