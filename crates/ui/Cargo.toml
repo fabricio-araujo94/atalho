@@ -13,3 +13,5 @@ workspace = true
 [dependencies]
 core = { workspace = true }
 iced = { workspace = true }
+platform = { workspace = true }
+tokio = { workspace = true }
