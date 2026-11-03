@@ -5,7 +5,7 @@
 
 pub mod search;
 
-use core::{AppEntry, AppSource, CommandEntry, Executor, Matcher, Persistence};
+use core::{AppEntry, AppSource, CommandEntry, Executor, History, Matcher, Persistence};
 use executor::SystemExecutor;
 use indexer::DefaultIndexer;
 use matcher::FuzzyMatcher;
@@ -39,7 +39,6 @@ fn main() -> core::Result<()> {
         sample_commands,
     ));
     let matcher = Arc::new(FuzzyMatcher::new());
-    let executor = Arc::new(SystemExecutor::with_platform(platform));
     let persistence = Arc::new(InMemoryPersistence::new());
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -47,11 +46,16 @@ fn main() -> core::Result<()> {
         .map_err(|error| {
             core::AppError::execution_failed(format!("Tokio startup failed: {error}"))
         })?;
-    let search_service = Arc::new(SearchService::new(
-        indexer,
-        Arc::clone(&matcher) as Arc<dyn Matcher>,
-        persistence.clone(),
-    ));
+    let history = Arc::clone(&persistence) as Arc<dyn History>;
+    let search_service = Arc::new(
+        SearchService::new(
+            indexer,
+            Arc::clone(&matcher) as Arc<dyn Matcher>,
+            persistence.clone(),
+        )
+        .with_history(Arc::clone(&history)),
+    );
+    let executor = Arc::new(SystemExecutor::with_platform(platform).with_history(history));
     runtime.block_on(async {
         persistence.save_apps(&sample_apps).await?;
         search_service.initialize().await
@@ -66,10 +70,11 @@ fn main() -> core::Result<()> {
     });
 
     let (execute_sender, mut execute_receiver) = mpsc::unbounded_channel();
+    let launch_service = Arc::clone(&search_service);
     runtime.spawn(async move {
         while let Some(entry) = execute_receiver.recv().await {
             if let Err(error) = executor.execute_app(&entry).await {
-                eprintln!("Failed to launch {}: {error}", entry.name);
+                launch_service.report_error(error);
             }
         }
     });

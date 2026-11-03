@@ -63,6 +63,11 @@ impl SearchService {
         self
     }
 
+    /// Broadcasts an asynchronous operation failure to UI subscribers.
+    pub fn report_error(&self, error: AppError) {
+        let _ = self.event_sender.send(SearchEvent::Error(error));
+    }
+
     /// Creates a new [`SearchService`] with a configurable debounce duration.
     #[must_use]
     pub fn with_debounce(
