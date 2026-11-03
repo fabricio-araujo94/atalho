@@ -962,6 +962,9 @@ dependencies = [
  "async-trait",
  "core",
  "platform",
+ "tokio",
+ "tracing",
+ "windows 0.58.0",
 ]
 
 [[package]]

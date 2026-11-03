@@ -55,11 +55,19 @@ pub trait Config: Send + Sync {
 /// Contract for launching desktop applications and executing system commands.
 #[async_trait::async_trait]
 pub trait Executor: Send + Sync {
+    /// Launches an application entry.
+    ///
+    /// # Errors
+    /// Returns [`crate::error::AppError::ExecutionFailed`] if launching fails.
+    async fn launch(&self, app: &AppEntry) -> Result<()>;
+
     /// Asynchronously launches an indexed application.
     ///
     /// # Errors
     /// Returns [`crate::error::AppError::ExecutionFailed`] if the process cannot be spawned.
-    async fn execute_app(&self, app: &AppEntry) -> Result<()>;
+    async fn execute_app(&self, app: &AppEntry) -> Result<()> {
+        self.launch(app).await
+    }
 
     /// Asynchronously executes a system command action.
     ///
