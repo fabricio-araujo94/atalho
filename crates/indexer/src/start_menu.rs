@@ -167,7 +167,9 @@ impl Indexer for StartMenuIndexer {
                         }
 
                         let mut entry =
-                            AppEntry::new(file_stem, info.target_path, AppSource::StartMenu);
+                            AppEntry::new(file_stem, info.target_path, AppSource::StartMenu)
+                                .with_shortcut(lnk_path.clone())
+                                .with_admin_required(info.requires_admin);
                         if let Some(args) = info.arguments {
                             entry = entry.with_arguments(args);
                         }

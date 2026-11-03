@@ -10,7 +10,9 @@ mod windows_impl {
         CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx,
         CoUninitialize, IPersistFile, STGM_READ,
     };
-    use windows::Win32::UI::Shell::{IShellLinkW, SLGP_RAWPATH, SLR_NO_UI, ShellLink};
+    use windows::Win32::UI::Shell::{
+        IShellLinkDataList, IShellLinkW, SLDF_RUNAS_USER, SLGP_RAWPATH, SLR_NO_UI, ShellLink,
+    };
     use windows::core::{Interface, PCWSTR};
 
     /// RAII guard ensuring `CoUninitialize` is called when leaving scope.
@@ -50,6 +52,8 @@ mod windows_impl {
         pub arguments: Option<String>,
         /// Optional icon location path.
         pub icon_path: Option<PathBuf>,
+        /// Whether the shortcut requests administrator elevation.
+        pub requires_admin: bool,
     }
 
     /// Parses a `.lnk` file from disk and extracts target path, arguments, and icon location.
@@ -72,6 +76,11 @@ mod windows_impl {
         unsafe {
             persist.Load(PCWSTR(wide_path.as_ptr()), STGM_READ)?;
         }
+
+        let link_data: IShellLinkDataList = shell_link.cast()?;
+        // SAFETY: Reads flags from the loaded shell link's data list.
+        let link_flags = unsafe { link_data.GetFlags()? };
+        let requires_admin = link_flags & SLDF_RUNAS_USER.0 as u32 != 0;
 
         // SAFETY: Resolving link without displaying UI dialogs if broken.
         unsafe {
@@ -128,6 +137,7 @@ mod windows_impl {
             target_path,
             arguments,
             icon_path,
+            requires_admin,
         })
     }
 }
@@ -144,6 +154,7 @@ mod stub_impl {
         pub target_path: PathBuf,
         pub arguments: Option<String>,
         pub icon_path: Option<PathBuf>,
+        pub requires_admin: bool,
     }
 
     pub fn parse_shortcut(_lnk_path: &Path) -> Result<ShortcutInfo, ()> {

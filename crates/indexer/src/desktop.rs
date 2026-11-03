@@ -166,7 +166,9 @@ impl Indexer for DesktopIndexer {
                         }
 
                         let mut entry =
-                            AppEntry::new(file_stem, info.target_path, AppSource::Desktop);
+                            AppEntry::new(file_stem, info.target_path, AppSource::Desktop)
+                                .with_shortcut(lnk_path.clone())
+                                .with_admin_required(info.requires_admin);
                         if let Some(args) = info.arguments {
                             entry = entry.with_arguments(args);
                         }
