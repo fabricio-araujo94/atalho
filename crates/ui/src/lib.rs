@@ -3,6 +3,8 @@
 //! Provides presentation state models, message definitions, and view components
 //! for the desktop search and launcher interface.
 
+pub mod style;
+
 use core::SearchResult;
 
 /// Messages emitted by user interaction within the launcher UI.
