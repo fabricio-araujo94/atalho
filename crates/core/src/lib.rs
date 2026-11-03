@@ -9,6 +9,7 @@
 
 mod config;
 mod error;
+mod icon;
 pub mod indexer;
 pub mod matcher;
 mod models;
@@ -26,6 +27,7 @@ pub use ::core::{
 
 pub use config::{AppConfig, SourceToggle, ThemeName};
 pub use error::{AppError, Result};
+pub use icon::Image;
 pub use indexer::Indexer;
 pub use matcher::{Matcher, ScoredMatch, SearchRequest, SearchResponse};
 pub use models::{
