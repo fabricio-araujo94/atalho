@@ -1,24 +1,14 @@
 //! Asynchronous search orchestration pipeline, index lifecycle, and debounced query execution.
 
 use core::{
-    AppEntry, AppError, Indexer, Matcher, Persistence, Result, SearchRequest, SearchResponse,
+    AppEntry, AppError, Indexer, Matcher, Persistence, Result, SearchEvent, SearchRequest,
+    SearchResponse,
 };
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{RwLock, broadcast};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn};
-
-/// Events emitted by [`SearchService`] to notify subscribers of search lifecycle changes.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SearchEvent {
-    /// A search query has begun executing or is awaiting debouncing.
-    Loading,
-    /// A search query completed successfully with ranked response items.
-    Results(SearchResponse),
-    /// A search query or index lifecycle operation encountered an error.
-    Error(AppError),
-}
 
 /// Orchestration service coordinating indexing, in-memory caching, debouncing,
 /// cancellation, and fast fuzzy matching.

@@ -13,6 +13,7 @@ pub mod indexer;
 pub mod matcher;
 mod models;
 pub mod platform;
+mod search_event;
 mod traits;
 
 // Re-export standard library core modules so macros (like `async_trait`) that emit `core::...`
@@ -34,4 +35,5 @@ pub use platform::{
     ForegroundManager, GlobalHotkey, HotkeyId, HotkeyModifiers, Hwnd, Key, KeyCode, Mods,
     WindowHelper,
 };
+pub use search_event::SearchEvent;
 pub use traits::{CacheMetadata, Config, Executor, History, IndexCache, Persistence};
