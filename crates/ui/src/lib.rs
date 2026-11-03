@@ -69,6 +69,8 @@ pub enum Message {
     SearchLoading,
     /// Search service reported an error.
     SearchFailed(String),
+    /// Clear a transient execution or search error message.
+    ToastExpired,
     /// Move selection to the previous result.
     SelectionUp,
     /// Move selection to the next result.
@@ -167,8 +169,14 @@ impl LauncherState {
                 return window::latest()
                     .then(move |id| id.map_or_else(Task::none, |id| window::resize(id, new_size)));
             }
-            Message::SearchLoading => self.search_error = None,
-            Message::SearchFailed(error) => self.search_error = Some(error),
+            Message::SearchLoading | Message::ToastExpired => self.search_error = None,
+            Message::SearchFailed(error) => {
+                self.search_error = Some(error);
+                return Task::perform(
+                    tokio::time::sleep(std::time::Duration::from_secs(3)),
+                    |()| Message::ToastExpired,
+                );
+            }
             Message::SelectionUp => self.select_previous(),
             Message::SelectionDown => self.select_next(),
             Message::ExecuteSelected => self.execute_selected(),
