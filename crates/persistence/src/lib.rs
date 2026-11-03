@@ -3,7 +3,8 @@
 //! Provides implementations of [`core::Persistence`] for storing application lists,
 //! search cache, and launch metrics.
 
-use core::{AppEntry, AppError, Persistence, Result};
+use core::{AppEntry, AppError, History, Persistence, Result};
+use std::collections::HashMap;
 use std::sync::RwLock;
 use std::time::SystemTime;
 
@@ -18,6 +19,43 @@ pub struct InMemoryPersistence {
     apps: RwLock<Vec<AppEntry>>,
     apps_updated_at: RwLock<Option<SystemTime>>,
     launch_history: RwLock<Vec<String>>,
+    typed_history: RwLock<Vec<uuid::Uuid>>,
+}
+
+#[async_trait::async_trait]
+impl History for InMemoryPersistence {
+    async fn record(&self, entry_id: uuid::Uuid) -> Result<()> {
+        self.typed_history
+            .write()
+            .map_err(|err| AppError::io_failed(format!("Lock acquisition error: {err}")))?
+            .push(entry_id);
+        Ok(())
+    }
+
+    async fn recent(&self, limit: usize) -> Result<Vec<uuid::Uuid>> {
+        let history = self
+            .typed_history
+            .read()
+            .map_err(|err| AppError::io_failed(format!("Lock acquisition error: {err}")))?;
+        Ok(history.iter().rev().take(limit).copied().collect())
+    }
+
+    async fn frequency(&self) -> Result<HashMap<uuid::Uuid, u32>> {
+        let frequency = {
+            let history = self
+                .typed_history
+                .read()
+                .map_err(|err| AppError::io_failed(format!("Lock acquisition error: {err}")))?;
+            let mut frequency = HashMap::new();
+            for id in history.iter() {
+                let count = frequency.entry(*id).or_insert(0_u32);
+                *count = count.saturating_add(1);
+            }
+            drop(history);
+            frequency
+        };
+        Ok(frequency)
+    }
 }
 
 impl InMemoryPersistence {
