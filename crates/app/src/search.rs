@@ -1,9 +1,10 @@
 //! Asynchronous search orchestration pipeline, index lifecycle, and debounced query execution.
 
 use core::{
-    AppEntry, AppError, Indexer, Matcher, Persistence, Result, SearchEvent, SearchRequest,
-    SearchResponse,
+    AppEntry, AppError, History, Indexer, Matcher, Persistence, Result, ScoredMatch, SearchEvent,
+    SearchRequest, SearchResponse,
 };
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{RwLock, broadcast};
@@ -16,12 +17,21 @@ pub struct SearchService {
     indexer: Arc<dyn Indexer>,
     matcher: Arc<dyn Matcher>,
     persistence: Arc<dyn Persistence>,
+    history: Option<Arc<dyn History>>,
     cache: Arc<RwLock<Vec<AppEntry>>>,
     event_sender: broadcast::Sender<SearchEvent>,
     debounce_duration: Duration,
     active_search_token: Arc<std::sync::Mutex<Option<CancellationToken>>>,
     active_reindex_token: Arc<std::sync::Mutex<Option<CancellationToken>>>,
     reindex_commit_lock: Arc<tokio::sync::Mutex<()>>,
+}
+
+struct SearchTaskContext {
+    cache: Arc<RwLock<Vec<AppEntry>>>,
+    searcher: Arc<dyn Matcher>,
+    history: Option<Arc<dyn History>>,
+    event_tx: broadcast::Sender<SearchEvent>,
+    active_search_token: Arc<std::sync::Mutex<Option<CancellationToken>>>,
 }
 
 impl SearchService {
@@ -46,6 +56,13 @@ impl SearchService {
         )
     }
 
+    /// Enables history-based usage ranking.
+    #[must_use]
+    pub fn with_history(mut self, history: Arc<dyn History>) -> Self {
+        self.history = Some(history);
+        self
+    }
+
     /// Creates a new [`SearchService`] with a configurable debounce duration.
     #[must_use]
     pub fn with_debounce(
@@ -59,6 +76,7 @@ impl SearchService {
             indexer,
             matcher,
             persistence,
+            history: None,
             cache: Arc::new(RwLock::new(Vec::new())),
             event_sender,
             debounce_duration,
@@ -203,7 +221,7 @@ impl SearchService {
         let max_results = req.max_results;
 
         // Perform fast synchronous matching inside spawn_blocking to prevent async runtime blocking
-        let (all_matches, total) = tokio::task::spawn_blocking(move || {
+        let (mut all_matches, total) = tokio::task::spawn_blocking(move || {
             let scored_results = searcher.search(&query, &entries);
             let total = scored_results.len();
             (scored_results, total)
@@ -212,6 +230,10 @@ impl SearchService {
         .map_err(|join_err| {
             AppError::execution_failed(format!("Search task failed to join: {join_err}"))
         })?;
+        if let Some(history) = &self.history {
+            let frequency = history.frequency().await?;
+            Self::apply_history_boost(&mut all_matches, &frequency);
+        }
 
         let elapsed = start.elapsed();
         let elapsed_us = u64::try_from(elapsed.as_micros()).unwrap_or(u64::MAX);
@@ -249,99 +271,138 @@ impl SearchService {
         let debounce = self.debounce_duration;
         let cache = Arc::clone(&self.cache);
         let searcher = Arc::clone(&self.matcher);
+        let history = self.history.clone();
         let active_search_token = Arc::clone(&self.active_search_token);
+        let context = SearchTaskContext {
+            cache,
+            searcher,
+            history,
+            event_tx,
+            active_search_token,
+        };
 
         tokio::spawn(async move {
-            // Emit Loading event immediately to alert UI of pending search activity
-            {
+            Self::run_debounced_search(req, new_token, debounce, context).await;
+        });
+    }
+
+    async fn run_debounced_search(
+        req: SearchRequest,
+        token: CancellationToken,
+        debounce: Duration,
+        context: SearchTaskContext,
+    ) {
+        let SearchTaskContext {
+            cache,
+            searcher,
+            history,
+            event_tx,
+            active_search_token,
+        } = context;
+        {
+            let _active = active_search_token
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if !token.is_cancelled() {
+                let _ = event_tx.send(SearchEvent::Loading);
+            }
+        }
+
+        tokio::select! {
+            () = tokio::time::sleep(debounce) => {}
+            () = token.cancelled() => {
+                debug!("Debounced search cancelled before timer expired for query '{}'", req.query);
+                return;
+            }
+        }
+        if token.is_cancelled() {
+            return;
+        }
+
+        let start = Instant::now();
+        let entries = cache.read().await.clone();
+        let query = req.query.clone();
+        let max_results = req.max_results;
+        let token_for_match = token.clone();
+        let match_res = tokio::task::spawn_blocking(move || {
+            searcher
+                .search_with_cancellation(&query, &entries, &token_for_match)
+                .map(|matches| {
+                    let total = matches.len();
+                    (matches, total)
+                })
+        })
+        .await;
+
+        if token.is_cancelled() {
+            debug!(
+                "Search cancelled during or immediately after matching for query '{}'",
+                req.query
+            );
+            return;
+        }
+
+        match match_res {
+            Ok(Some((mut scored_results, total))) => {
+                if let Some(history) = history {
+                    match history.frequency().await {
+                        Ok(frequency) => {
+                            Self::apply_history_boost(&mut scored_results, &frequency);
+                        }
+                        Err(error) => {
+                            let _active = active_search_token
+                                .lock()
+                                .unwrap_or_else(std::sync::PoisonError::into_inner);
+                            if !token.is_cancelled() {
+                                let _ = event_tx.send(SearchEvent::Error(error));
+                            }
+                            return;
+                        }
+                    }
+                }
+                let elapsed_us = u64::try_from(start.elapsed().as_micros()).unwrap_or(u64::MAX);
+                let results: Vec<_> = scored_results.into_iter().take(max_results).collect();
+                debug!(
+                    "Search for '{}' completed in {} us ({} total matches, returning {})",
+                    req.query,
+                    elapsed_us,
+                    total,
+                    results.len()
+                );
+                let response = SearchResponse::new(results, total, elapsed_us);
                 let _active = active_search_token
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
-                if !new_token.is_cancelled() {
-                    let _ = event_tx.send(SearchEvent::Loading);
+                if !token.is_cancelled() {
+                    let _ = event_tx.send(SearchEvent::Results(response));
                 }
             }
-
-            // Debounce wait with cooperative cancellation
-            tokio::select! {
-                () = tokio::time::sleep(debounce) => {}
-                () = new_token.cancelled() => {
-                    debug!("Debounced search cancelled before timer expired for query '{}'", req.query);
-                    return;
+            Ok(None) => {
+                debug!("Search cancelled internally for query '{}'", req.query);
+            }
+            Err(join_err) => {
+                let err =
+                    AppError::execution_failed(format!("Search task failed to join: {join_err}"));
+                let _active = active_search_token
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                if !token.is_cancelled() {
+                    let _ = event_tx.send(SearchEvent::Error(err));
                 }
             }
+        }
+    }
 
-            if new_token.is_cancelled() {
-                return;
+    fn apply_history_boost(matches: &mut [ScoredMatch], frequency: &HashMap<uuid::Uuid, u32>) {
+        for candidate in matches.iter_mut() {
+            if let Some(count) = frequency.get(&candidate.entry.id) {
+                let boost = f64::from(*count).ln_1p() * 8.0;
+                #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                let boost = boost.round() as i64;
+                candidate.score = candidate.score.saturating_add(boost);
             }
-
-            let start = Instant::now();
-
-            // Snapshot cache
-            let entries = {
-                let guard = cache.read().await;
-                guard.clone()
-            };
-
-            let query = req.query.clone();
-            let max_results = req.max_results;
-            let matcher_clone = Arc::clone(&searcher);
-            let token_clone = new_token.clone();
-
-            let match_res = tokio::task::spawn_blocking(move || {
-                matcher_clone
-                    .search_with_cancellation(&query, &entries, &token_clone)
-                    .map(|matches| {
-                        let total = matches.len();
-                        (matches, total)
-                    })
-            })
-            .await;
-
-            if new_token.is_cancelled() {
-                debug!(
-                    "Search cancelled during or immediately after matching for query '{}'",
-                    req.query
-                );
-                return;
-            }
-
-            match match_res {
-                Ok(Some((scored_results, total))) => {
-                    let elapsed = start.elapsed();
-                    let elapsed_us = u64::try_from(elapsed.as_micros()).unwrap_or(u64::MAX);
-                    let results: Vec<_> = scored_results.into_iter().take(max_results).collect();
-                    debug!(
-                        "Search for '{}' completed in {} us ({} total matches, returning {})",
-                        req.query,
-                        elapsed_us,
-                        total,
-                        results.len()
-                    );
-                    let response = SearchResponse::new(results, total, elapsed_us);
-                    let _active = active_search_token
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner);
-                    if !new_token.is_cancelled() {
-                        let _ = event_tx.send(SearchEvent::Results(response));
-                    }
-                }
-                Ok(None) => {
-                    debug!("Search cancelled internally for query '{}'", req.query);
-                }
-                Err(join_err) => {
-                    let err = AppError::execution_failed(format!(
-                        "Search task failed to join: {join_err}"
-                    ));
-                    let _active = active_search_token
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner);
-                    if !new_token.is_cancelled() {
-                        let _ = event_tx.send(SearchEvent::Error(err));
-                    }
-                }
-            }
-        });
+        }
+        matches.sort_by_key(|candidate| std::cmp::Reverse(candidate.score));
     }
 
     /// Exposes `async fn search(req: SearchRequest) -> Result<SearchResponse>` as specified
@@ -523,5 +584,24 @@ mod tests {
             assert!(tokio::time::Instant::now() < deadline, "re-index timed out");
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
+    }
+
+    #[test]
+    fn launch_frequency_boost_reorders_matches() {
+        let less_used = AppEntry::new("Less Used", "less-used.exe", AppSource::StartMenu);
+        let frequently_used = AppEntry::new(
+            "Frequently Used",
+            "frequently-used.exe",
+            AppSource::StartMenu,
+        );
+        let mut matches = vec![
+            ScoredMatch::new(less_used, 100, Vec::new()),
+            ScoredMatch::new(frequently_used.clone(), 100, Vec::new()),
+        ];
+        let frequency = HashMap::from([(frequently_used.id, 100)]);
+
+        SearchService::apply_history_boost(&mut matches, &frequency);
+
+        assert_eq!(matches[0].entry.name, "Frequently Used");
     }
 }
