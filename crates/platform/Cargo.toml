@@ -11,12 +11,16 @@ description = "Operating system abstraction and platform-specific integrations f
 workspace = true
 
 [dependencies]
+dashmap = { workspace = true }
 core = { workspace = true }
+tokio = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 windows = { workspace = true, features = [
     "Win32_Foundation",
+    "Win32_Storage_FileSystem",
     "Win32_Graphics_Gdi",
+    "Win32_UI_Shell",
     "Win32_System_Threading",
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_WindowsAndMessaging",
