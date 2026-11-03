@@ -72,6 +72,12 @@ pub struct AppEntry {
     pub icon_path: Option<PathBuf>,
     /// Origin source where the application was discovered.
     pub source: AppSource,
+    /// Original shortcut path when this entry was discovered from a `.lnk` file.
+    #[serde(default)]
+    pub shortcut_path: Option<PathBuf>,
+    /// Whether this shortcut requests administrator elevation.
+    #[serde(default)]
+    pub requires_admin: bool,
     /// Optional human-readable description of the application.
     pub description: Option<String>,
     /// Optional search keywords or aliases used to match this application.
@@ -96,6 +102,8 @@ impl AppEntry {
             arguments: None,
             icon_path: None,
             source,
+            shortcut_path: None,
+            requires_admin: false,
             description: None,
             keywords: Vec::new(),
         }
@@ -119,6 +127,20 @@ impl AppEntry {
     #[must_use]
     pub fn with_icon(mut self, icon_path: impl Into<PathBuf>) -> Self {
         self.icon_path = Some(icon_path.into());
+        self
+    }
+
+    /// Stores the original shortcut path used to discover this application.
+    #[must_use]
+    pub fn with_shortcut(mut self, shortcut_path: impl Into<PathBuf>) -> Self {
+        self.shortcut_path = Some(shortcut_path.into());
+        self
+    }
+
+    /// Marks this application as requiring administrator elevation.
+    #[must_use]
+    pub const fn with_admin_required(mut self, requires_admin: bool) -> Self {
+        self.requires_admin = requires_admin;
         self
     }
 
