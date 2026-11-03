@@ -9,6 +9,8 @@ use core::{
 };
 use std::path::{Path, PathBuf};
 
+pub mod icon;
+pub use icon::icon_for;
 #[cfg(windows)]
 pub mod windows;
 
