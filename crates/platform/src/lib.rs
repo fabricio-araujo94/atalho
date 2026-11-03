@@ -72,6 +72,16 @@ pub enum PlatformKind {
     Unknown,
 }
 
+/// Computes the top-left origin that centers a launcher on the monitor selected by
+/// the window backend.
+#[must_use]
+pub fn centered_window_origin(window_size: (f32, f32), monitor_size: (f32, f32)) -> (f32, f32) {
+    (
+        (monitor_size.0 - window_size.0) / 2.0,
+        (monitor_size.1 - window_size.1) / 2.0,
+    )
+}
+
 /// Platform abstraction service providing OS-level capabilities.
 #[derive(Debug, Default, Clone)]
 pub struct PlatformManager {
@@ -212,5 +222,13 @@ mod tests {
     fn test_search_paths_non_empty() {
         let manager = PlatformManager::new();
         let _paths = manager.application_search_paths();
+    }
+
+    #[test]
+    fn test_centered_window_origin() {
+        assert_eq!(
+            centered_window_origin((680.0, 64.0), (1920.0, 1080.0)),
+            (620.0, 508.0)
+        );
     }
 }
