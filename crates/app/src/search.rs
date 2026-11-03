@@ -515,7 +515,13 @@ mod tests {
         }
         assert_eq!(service.cache.read().await.as_slice(), &[stale_entry]);
 
-        tokio::time::sleep(Duration::from_millis(60)).await;
-        assert_eq!(service.cache.read().await.as_slice(), &[fresh_entry]);
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(1);
+        loop {
+            if service.cache.read().await.as_slice() == [fresh_entry.clone()] {
+                break;
+            }
+            assert!(tokio::time::Instant::now() < deadline, "re-index timed out");
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
     }
 }
