@@ -36,6 +36,11 @@ pub trait History: Send + Sync {
     async fn recent(&self, limit: usize) -> Result<Vec<Uuid>>;
     /// Returns launch counts keyed by application ID.
     async fn frequency(&self) -> Result<HashMap<Uuid, u32>>;
+
+    /// Flushes buffered history writes before application shutdown.
+    async fn flush(&self) -> Result<()> {
+        Ok(())
+    }
 }
 
 /// Storage contract for application configuration.
