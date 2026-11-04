@@ -3,7 +3,7 @@
 //! Provides implementations of [`core::Persistence`] for storing application lists,
 //! search cache, and launch metrics.
 
-use core::{AppEntry, AppError, History, Persistence, Result};
+use core::{AppConfig, AppEntry, AppError, Config, History, Persistence, Result};
 use std::collections::HashMap;
 use std::sync::RwLock;
 use std::time::SystemTime;
@@ -20,6 +20,7 @@ pub struct InMemoryPersistence {
     apps_updated_at: RwLock<Option<SystemTime>>,
     launch_history: RwLock<Vec<String>>,
     typed_history: RwLock<Vec<uuid::Uuid>>,
+    config: RwLock<AppConfig>,
 }
 
 #[async_trait::async_trait]
@@ -63,6 +64,22 @@ impl InMemoryPersistence {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+}
+
+impl Config for InMemoryPersistence {
+    fn load(&self) -> Result<AppConfig> {
+        self.config
+            .read()
+            .map(|config| config.clone())
+            .map_err(|error| AppError::io_failed(format!("Config lock acquisition error: {error}")))
+    }
+
+    fn save(&self, config: &AppConfig) -> Result<()> {
+        *self.config.write().map_err(|error| {
+            AppError::io_failed(format!("Config lock acquisition error: {error}"))
+        })? = config.clone();
+        Ok(())
     }
 }
 
