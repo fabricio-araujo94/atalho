@@ -5,7 +5,7 @@ pub mod style;
 use core::{AppEntry, ScoredMatch, SearchEvent, SearchRequest};
 use iced::futures::SinkExt;
 use iced::keyboard::{self, Key, Modifiers};
-use iced::widget::{button, column, container, row, scrollable, text, text_input};
+use iced::widget::{button, checkbox, column, container, row, scrollable, text, text_input};
 use iced::{
     Alignment, Color, Element, Event, Fill, Length, Subscription, Task, Theme as IcedTheme, event,
     window,
@@ -87,6 +87,33 @@ pub enum Message {
     SelectResult(usize),
     /// Execute a result by index.
     ExecuteResult(usize),
+    /// Open the settings panel.
+    OpenSettings,
+    /// Return from settings to search.
+    CloseSettings,
+    /// Change the sign-in startup preference.
+    AutoStartChanged(bool),
+    /// Apply the startup preference after the platform operation completes.
+    AutoStartState(bool),
+    /// Exit the application after lifecycle cleanup is initiated.
+    Quit,
+    /// Handle an event from the tray/lifecycle command stream.
+    UiCommand(UiCommand),
+}
+
+/// Commands sent to the UI from the tray and lifecycle coordinator.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UiCommand {
+    /// Show the launcher window.
+    Show,
+    /// Toggle launcher visibility.
+    ToggleVisibility,
+    /// Open launcher settings.
+    OpenSettings,
+    /// Exit the launcher.
+    Quit,
+    /// Update the displayed startup state.
+    AutoStartState(bool),
 }
 
 /// Iced application state for the launcher.
@@ -109,8 +136,14 @@ pub struct LauncherState {
     pub elapsed_us: u64,
     /// Most recent search error, if any.
     pub search_error: Option<String>,
+    /// Whether the settings panel is open.
+    pub settings_open: bool,
+    /// Whether the launcher starts at sign-in.
+    pub auto_start: bool,
     query_sender: mpsc::UnboundedSender<SearchRequest>,
     execute_sender: mpsc::UnboundedSender<AppEntry>,
+    auto_start_sender: mpsc::UnboundedSender<bool>,
+    ui_commands: UiCommandSource,
     search_events: SearchEventSource,
 }
 
@@ -121,7 +154,10 @@ impl LauncherState {
         query_sender: mpsc::UnboundedSender<SearchRequest>,
         execute_sender: mpsc::UnboundedSender<AppEntry>,
         search_events: SearchEventSource,
+        ui_commands: UiCommandSource,
+        auto_start_sender: mpsc::UnboundedSender<bool>,
         max_results: usize,
+        auto_start: bool,
     ) -> Self {
         Self {
             query: String::new(),
@@ -133,8 +169,12 @@ impl LauncherState {
             total_results: 0,
             elapsed_us: 0,
             search_error: None,
+            settings_open: false,
+            auto_start,
             query_sender,
             execute_sender,
+            auto_start_sender,
+            ui_commands,
             search_events,
         }
     }
@@ -180,13 +220,7 @@ impl LauncherState {
             Message::SelectionUp => self.select_previous(),
             Message::SelectionDown => self.select_next(),
             Message::ExecuteSelected => self.execute_selected(),
-            Message::ToggleVisibility => {
-                self.is_visible = !self.is_visible;
-                let minimized = !self.is_visible;
-                return window::latest().then(move |id| {
-                    id.map_or_else(Task::none, |id| window::minimize(id, minimized))
-                });
-            }
+            Message::ToggleVisibility => return self.toggle_visibility(),
             Message::ThemeChanged(theme) => self.theme = theme,
             Message::ClearQuery => {
                 self.query.clear();
@@ -204,8 +238,70 @@ impl LauncherState {
                 }
             }
             Message::ExecuteResult(index) => self.execute_at(index),
+            Message::OpenSettings => {
+                self.settings_open = true;
+                self.is_visible = true;
+                let size = iced::Size::new(style::WINDOW_WIDTH, style::SETTINGS_WINDOW_HEIGHT);
+                return window::latest().then(move |id| {
+                    id.map_or_else(Task::none, |id| {
+                        Task::batch([window::minimize(id, false), window::resize(id, size)])
+                    })
+                });
+            }
+            Message::CloseSettings => {
+                self.settings_open = false;
+                let rows = u16::try_from(self.results.len())
+                    .unwrap_or(u16::MAX)
+                    .min(style::MAX_VISIBLE_RESULTS);
+                let size = iced::Size::new(
+                    style::WINDOW_WIDTH,
+                    style::RESULT_ROW_HEIGHT.mul_add(f32::from(rows), style::INITIAL_WINDOW_HEIGHT),
+                );
+                return window::latest()
+                    .then(move |id| id.map_or_else(Task::none, |id| window::resize(id, size)));
+            }
+            Message::AutoStartChanged(enabled) => {
+                self.auto_start = enabled;
+                if let Err(error) = self.auto_start_sender.send(enabled) {
+                    self.search_error = Some(format!("Settings service unavailable: {error}"));
+                }
+            }
+            Message::AutoStartState(enabled) => self.auto_start = enabled,
+            Message::Quit => return iced::exit(),
+            Message::UiCommand(command) => return self.handle_command(command),
         }
         Task::none()
+    }
+
+    fn toggle_visibility(&mut self) -> Task<Message> {
+        self.is_visible = !self.is_visible;
+        let minimized = !self.is_visible;
+        window::latest().then(move |id| {
+            id.map_or_else(Task::none, |id| {
+                if minimized {
+                    window::minimize(id, true)
+                } else {
+                    Task::batch([window::minimize(id, false), window::gain_focus(id)])
+                }
+            })
+        })
+    }
+
+    fn handle_command(&mut self, command: UiCommand) -> Task<Message> {
+        match command {
+            UiCommand::Show => {
+                self.is_visible = true;
+                window::latest().then(|id| {
+                    id.map_or_else(Task::none, |id| {
+                        Task::batch([window::minimize(id, false), window::gain_focus(id)])
+                    })
+                })
+            }
+            UiCommand::ToggleVisibility => self.update(Message::ToggleVisibility),
+            UiCommand::OpenSettings => self.update(Message::OpenSettings),
+            UiCommand::Quit => self.update(Message::Quit),
+            UiCommand::AutoStartState(enabled) => self.update(Message::AutoStartState(enabled)),
+        }
     }
 
     const fn select_previous(&mut self) {
@@ -241,11 +337,26 @@ impl LauncherState {
 #[derive(Clone)]
 pub struct SearchEventSource(EventSubscription);
 
+/// Cloneable handle that carries tray/lifecycle commands into an Iced subscription.
+#[derive(Clone)]
+pub struct UiCommandSource(UiCommandSubscription);
+
 impl SearchEventSource {
     /// Wraps a broadcast receiver for use by a launcher instance.
     #[must_use]
     pub fn new(receiver: broadcast::Receiver<SearchEvent>) -> Self {
         Self(EventSubscription {
+            id: NEXT_SUBSCRIPTION_ID.fetch_add(1, Ordering::Relaxed),
+            receiver: Arc::new(Mutex::new(receiver)),
+        })
+    }
+}
+
+impl UiCommandSource {
+    /// Wraps a command receiver for use by a launcher instance.
+    #[must_use]
+    pub fn new(receiver: mpsc::UnboundedReceiver<UiCommand>) -> Self {
+        Self(UiCommandSubscription {
             id: NEXT_SUBSCRIPTION_ID.fetch_add(1, Ordering::Relaxed),
             receiver: Arc::new(Mutex::new(receiver)),
         })
@@ -263,16 +374,23 @@ pub fn run(
     query_sender: mpsc::UnboundedSender<SearchRequest>,
     execute_sender: mpsc::UnboundedSender<AppEntry>,
     search_events: broadcast::Receiver<SearchEvent>,
+    ui_commands: mpsc::UnboundedReceiver<UiCommand>,
+    auto_start_sender: mpsc::UnboundedSender<bool>,
     max_results: usize,
+    auto_start: bool,
 ) -> iced::Result {
     let search_events = SearchEventSource::new(search_events);
+    let ui_commands = UiCommandSource::new(ui_commands);
     iced::application(
         move || {
             LauncherState::new(
                 query_sender.clone(),
                 execute_sender.clone(),
                 search_events.clone(),
+                ui_commands.clone(),
+                auto_start_sender.clone(),
                 max_results,
+                auto_start,
             )
         },
         |state: &mut LauncherState, message| state.update(message),
@@ -322,6 +440,9 @@ pub fn view(state: &LauncherState) -> Element<'_, Message> {
     if !state.is_visible {
         return container(text("")).width(Fill).height(Fill).into();
     }
+    if state.settings_open {
+        return settings_view(state);
+    }
 
     let search_bar = row![
         text(style::MAGNIFIER).size(style::ICON_SIZE),
@@ -337,6 +458,50 @@ pub fn view(state: &LauncherState) -> Element<'_, Message> {
     .spacing(style::ROW_SPACING)
     .align_y(Alignment::Center);
 
+    let results = results_list(state);
+
+    let status = row![
+        text(state.search_error.as_deref().map_or_else(
+            || format!("{} results", state.total_results),
+            std::borrow::ToOwned::to_owned,
+        ))
+        .size(style::STATUS_TEXT_SIZE)
+        .color(
+            state
+                .search_error
+                .as_ref()
+                .map_or(state.theme.foreground, |_| { state.theme.highlight })
+        ),
+        button(text(style::SETTINGS_BUTTON))
+            .padding(style::BUTTON_PADDING)
+            .on_press(Message::OpenSettings),
+        text(format!("{} μs", state.elapsed_us)).size(style::STATUS_TEXT_SIZE),
+    ]
+    .spacing(style::STATUS_SPACING)
+    .align_y(Alignment::Center);
+
+    container(
+        column![search_bar, results, status]
+            .spacing(style::SECTION_SPACING)
+            .padding(style::PANEL_PADDING)
+            .width(Fill),
+    )
+    .width(Fill)
+    .style(move |_theme| iced::widget::container::Style {
+        background: Some(state.theme.background.into()),
+        text_color: Some(state.theme.foreground),
+        border: iced::Border::default().rounded(style::CORNER_RADIUS),
+        shadow: iced::Shadow {
+            color: style::SHADOW_COLOR,
+            offset: iced::Vector::new(style::SHADOW_OFFSET, style::SHADOW_OFFSET),
+            blur_radius: style::SHADOW_BLUR,
+        },
+        ..iced::widget::container::Style::default()
+    })
+    .into()
+}
+
+fn results_list(state: &LauncherState) -> Element<'_, Message> {
     let mut result_rows = column![].spacing(style::RESULT_SPACING).width(Fill);
     for (index, scored) in state.results.iter().take(state.max_results).enumerate() {
         let selected = index == state.selected_index;
@@ -383,32 +548,31 @@ pub fn view(state: &LauncherState) -> Element<'_, Message> {
                 }),
         );
     }
-    let results = scrollable(result_rows).height(Length::Shrink).width(Fill);
+    scrollable(result_rows)
+        .height(Length::Shrink)
+        .width(Fill)
+        .into()
+}
 
-    let status = row![
-        text(state.search_error.as_deref().map_or_else(
-            || format!("{} results", state.total_results),
-            std::borrow::ToOwned::to_owned,
-        ))
-        .size(style::STATUS_TEXT_SIZE)
-        .color(
-            state
-                .search_error
-                .as_ref()
-                .map_or(state.theme.foreground, |_| { state.theme.highlight })
-        ),
-        text(format!("{} μs", state.elapsed_us)).size(style::STATUS_TEXT_SIZE),
-    ]
-    .spacing(style::STATUS_SPACING)
-    .align_y(Alignment::Center);
-
+fn settings_view(state: &LauncherState) -> Element<'_, Message> {
     container(
-        column![search_bar, results, status]
-            .spacing(style::SECTION_SPACING)
-            .padding(style::PANEL_PADDING)
-            .width(Fill),
+        column![
+            row![
+                text(style::SETTINGS_TITLE).size(style::SEARCH_TEXT_SIZE),
+                iced::widget::Space::new().width(Fill),
+                button(text(style::SETTINGS_CLOSE)).on_press(Message::CloseSettings),
+            ]
+            .align_y(Alignment::Center),
+            checkbox(state.auto_start)
+                .label(style::AUTO_START_LABEL)
+                .on_toggle(Message::AutoStartChanged),
+        ]
+        .spacing(style::SECTION_SPACING)
+        .padding(style::PANEL_PADDING)
+        .width(Fill),
     )
     .width(Fill)
+    .height(Fill)
     .style(move |_theme| iced::widget::container::Style {
         background: Some(state.theme.background.into()),
         text_color: Some(state.theme.foreground),
@@ -436,6 +600,7 @@ fn subscription(state: &LauncherState) -> Subscription<Message> {
     Subscription::batch([
         event::listen_with(keyboard_message),
         Subscription::run_with(state.search_events.0.clone(), search_event_stream),
+        Subscription::run_with(state.ui_commands.0.clone(), ui_command_stream),
     ])
 }
 
@@ -473,6 +638,12 @@ struct EventSubscription {
     receiver: Arc<Mutex<broadcast::Receiver<SearchEvent>>>,
 }
 
+#[derive(Clone)]
+struct UiCommandSubscription {
+    id: u64,
+    receiver: Arc<Mutex<mpsc::UnboundedReceiver<UiCommand>>>,
+}
+
 impl PartialEq for EventSubscription {
     fn eq(&self, other: &Self) -> bool {
         self.id == other.id
@@ -481,7 +652,21 @@ impl PartialEq for EventSubscription {
 
 impl Eq for EventSubscription {}
 
+impl PartialEq for UiCommandSubscription {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+impl Eq for UiCommandSubscription {}
+
 impl Hash for EventSubscription {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+    }
+}
+
+impl Hash for UiCommandSubscription {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.id.hash(state);
     }
@@ -526,6 +711,23 @@ fn search_event_stream(
     })
 }
 
+fn ui_command_stream(
+    subscription: &UiCommandSubscription,
+) -> impl iced::futures::Stream<Item = Message> + 'static + use<> {
+    let receiver = Arc::clone(&subscription.receiver);
+    iced::stream::channel(style::EVENT_CHANNEL_CAPACITY, async move |mut output| {
+        loop {
+            let command = receiver.lock().await.recv().await;
+            let Some(command) = command else {
+                break;
+            };
+            if output.send(Message::UiCommand(command)).await.is_err() {
+                break;
+            }
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -540,7 +742,10 @@ mod tests {
             query_sender,
             execute_sender,
             SearchEventSource::new(event_receiver),
+            UiCommandSource::new(mpsc::unbounded_channel().1),
+            mpsc::unbounded_channel().0,
             8,
+            false,
         )
     }
 
@@ -548,12 +753,17 @@ mod tests {
     fn query_update_emits_search_request() {
         let (query_sender, mut query_receiver) = mpsc::unbounded_channel();
         let (execute_sender, _) = mpsc::unbounded_channel();
+        let (_, ui_command_receiver) = mpsc::unbounded_channel();
+        let (auto_start_sender, _) = mpsc::unbounded_channel();
         let (event_sender, event_receiver) = broadcast::channel(4);
         let mut state = LauncherState::new(
             query_sender,
             execute_sender,
             SearchEventSource::new(event_receiver),
+            UiCommandSource::new(ui_command_receiver),
+            auto_start_sender,
             8,
+            false,
         );
 
         let _task = state.update(Message::QueryChanged("calc".to_owned()));
@@ -600,5 +810,30 @@ mod tests {
             ),
             Some(Message::ExecuteSelected)
         );
+    }
+
+    #[test]
+    fn auto_start_setting_emits_update_and_updates_view_state() {
+        let (auto_start_sender, mut auto_start_receiver) = mpsc::unbounded_channel();
+        let (query_sender, _) = mpsc::unbounded_channel();
+        let (execute_sender, _) = mpsc::unbounded_channel();
+        let (event_sender, event_receiver) = broadcast::channel(4);
+        let mut state = LauncherState::new(
+            query_sender,
+            execute_sender,
+            SearchEventSource::new(event_receiver),
+            UiCommandSource::new(mpsc::unbounded_channel().1),
+            auto_start_sender,
+            8,
+            false,
+        );
+
+        let _task = state.update(Message::AutoStartChanged(true));
+
+        assert!(state.auto_start);
+        assert_eq!(auto_start_receiver.try_recv().ok(), Some(true));
+        state.settings_open = true;
+        drop(view(&state));
+        drop(event_sender);
     }
 }

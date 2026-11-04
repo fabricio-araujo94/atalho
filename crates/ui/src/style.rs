@@ -50,6 +50,16 @@ pub const SHADOW_OFFSET: f32 = 2.0;
 pub const EVENT_CHANNEL_CAPACITY: usize = 32;
 /// Search placeholder text.
 pub const SEARCH_PLACEHOLDER: &str = "Search applications...";
+/// Settings panel heading.
+pub const SETTINGS_TITLE: &str = "Settings";
+/// Settings panel close button label.
+pub const SETTINGS_CLOSE: &str = "Done";
+/// Search-panel settings button label.
+pub const SETTINGS_BUTTON: &str = "Settings";
+/// Automatic startup option label.
+pub const AUTO_START_LABEL: &str = "Start FlowLauncherRust when I sign in";
+/// Settings-panel height in logical pixels.
+pub const SETTINGS_WINDOW_HEIGHT: f32 = 120.0;
 /// Magnifier glyph used in the search bar.
 pub const MAGNIFIER: &str = "⌕";
 /// Clear button glyph.
