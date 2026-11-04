@@ -11,6 +11,8 @@ use std::path::{Path, PathBuf};
 
 pub mod icon;
 pub use icon::icon_for;
+pub mod lifecycle;
+pub use lifecycle::{SingleInstanceGuard, TrayController, TrayEvent, set_auto_start};
 #[cfg(windows)]
 pub mod windows;
 
