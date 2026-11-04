@@ -106,6 +106,14 @@ pub trait GlobalHotkey: Send + Sync {
     /// # Errors
     /// Returns [`crate::error::AppError::PlatformFailed`] if unregistration fails.
     fn unregister(&mut self, id: HotkeyId) -> Result<()>;
+
+    /// Unregisters every hotkey owned by this manager.
+    ///
+    /// # Errors
+    /// Returns an error if one or more registrations could not be removed.
+    fn unregister_all(&mut self) -> Result<()> {
+        Ok(())
+    }
 }
 
 /// Contract for managing window styling, positioning, and focus.
