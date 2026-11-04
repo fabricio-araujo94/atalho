@@ -276,6 +276,30 @@ impl History for FilePersistence {
         }
         Ok(counts)
     }
+
+    async fn flush(&self) -> Result<()> {
+        let _guard = self.history_lock.lock().await;
+        for file_name in [ROTATED_HISTORY_FILE, HISTORY_FILE] {
+            let path = self.file_path(file_name);
+            let mut file = match tokio::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(&path)
+                .await
+            {
+                Ok(file) => file,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => return Err(path_error(&path, error)),
+            };
+            file.flush()
+                .await
+                .map_err(|error| path_error(&path, error))?;
+            file.sync_all()
+                .await
+                .map_err(|error| path_error(&path, error))?;
+        }
+        Ok(())
+    }
 }
 
 impl Config for FilePersistence {
