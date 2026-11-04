@@ -298,6 +298,24 @@ impl GlobalHotkey for WindowsGlobalHotkey {
         self.registered_ids.retain(|&stored_id| stored_id != id);
         Ok(())
     }
+
+    fn unregister_all(&mut self) -> Result<()> {
+        let ids = std::mem::take(&mut self.registered_ids);
+        let mut first_error = None;
+        for id in ids {
+            // SAFETY: Each ID was registered by this manager on the current thread.
+            if let Err(error) = unsafe { raw_unregister_hotkey(HWND::default(), id) }
+                && first_error.is_none()
+            {
+                first_error = Some(error);
+            }
+        }
+        first_error.map_or(Ok(()), |error| {
+            Err(AppError::platform_failed(format!(
+                "UnregisterHotKey failed: {error}"
+            )))
+        })
+    }
 }
 
 impl Drop for WindowsGlobalHotkey {

@@ -176,6 +176,10 @@ impl GlobalHotkey for PlatformManager {
     fn unregister(&mut self, id: HotkeyId) -> Result<()> {
         self.hotkey.unregister(id)
     }
+
+    fn unregister_all(&mut self) -> Result<()> {
+        self.hotkey.unregister_all()
+    }
 }
 
 impl WindowHelper for PlatformManager {

@@ -27,6 +27,10 @@ impl GlobalHotkey for StubGlobalHotkey {
     fn unregister(&mut self, _id: HotkeyId) -> Result<()> {
         Err(AppError::unsupported_platform())
     }
+
+    fn unregister_all(&mut self) -> Result<()> {
+        Ok(())
+    }
 }
 
 /// Non-Windows stub for [`WindowHelper`].
