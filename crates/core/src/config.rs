@@ -38,6 +38,8 @@ pub struct AppConfig {
     pub index_sources: Vec<SourceToggle>,
     /// Search query debounce window in milliseconds.
     pub debounce_ms: u64,
+    /// Whether the launcher starts when the current user signs in.
+    pub auto_start: bool,
 }
 
 impl Default for AppConfig {
@@ -65,6 +67,7 @@ impl Default for AppConfig {
                 },
             ],
             debounce_ms: 80,
+            auto_start: false,
         }
     }
 }
