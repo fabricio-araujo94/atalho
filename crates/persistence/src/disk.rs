@@ -186,7 +186,12 @@ impl FilePersistence {
         file.write_all(&record)
             .await
             .map_err(|error| path_error(&path, error))?;
-        file.flush().await.map_err(|error| path_error(&path, error))
+        file.flush()
+            .await
+            .map_err(|error| path_error(&path, error))?;
+        file.sync_all()
+            .await
+            .map_err(|error| path_error(&path, error))
     }
 
     fn run_config_io<T, F, Fut>(&self, operation: F) -> Result<T>
