@@ -68,6 +68,26 @@ impl SearchService {
         let _ = self.event_sender.send(SearchEvent::Error(error));
     }
 
+    /// Cooperatively cancels active queries and background indexing before shutdown.
+    pub fn cancel_tasks(&self) {
+        let search_token = self
+            .active_search_token
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+        if let Some(token) = search_token {
+            token.cancel();
+        }
+        let reindex_token = self
+            .active_reindex_token
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+        if let Some(token) = reindex_token {
+            token.cancel();
+        }
+    }
+
     /// Creates a new [`SearchService`] with a configurable debounce duration.
     #[must_use]
     pub fn with_debounce(
