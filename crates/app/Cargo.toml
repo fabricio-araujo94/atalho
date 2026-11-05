@@ -7,8 +7,19 @@ license.workspace = true
 readme.workspace = true
 description = "Main entry point and orchestrator for the Atalho desktop application"
 
+[[bin]]
+name = "Atalho"
+path = "src/main.rs"
+
 [lib]
 path = "src/lib.rs"
+
+[package.metadata.wix]
+name = "Atalho"
+product-name = "Atalho"
+manufacturer = "Atalho"
+upgrade-guid = "f8c13a21-39d6-4f3f-a037-7707c860f2e7"
+license = false
 
 [lints]
 workspace = true

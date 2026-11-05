@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?if $(sys.BUILDARCH) = x64 or $(sys.BUILDARCH) = arm64 ?>
+    <?define PlatformProgramFilesFolder = "ProgramFiles64Folder" ?>
+<?else ?>
+    <?define PlatformProgramFilesFolder = "ProgramFilesFolder" ?>
+<?endif ?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="*" Name="Atalho" Language="1033"
+           Version="$(var.Version)" Manufacturer="Atalho"
+           UpgradeCode="f8c13a21-39d6-4f3f-a037-7707c860f2e7">
+    <Package InstallerVersion="450" Compressed="yes" InstallScope="perMachine"
+             Description="Atalho desktop launcher" />
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Atalho is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+    <Property Id="ARPPRODUCTNAME" Value="Atalho" />
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="$(var.PlatformProgramFilesFolder)">
+        <Directory Id="INSTALLDIR" Name="Atalho" />
+      </Directory>
+      <Directory Id="ProgramMenuFolder">
+        <Directory Id="ApplicationProgramsFolder" Name="Atalho" />
+      </Directory>
+      <Directory Id="StartupFolder" />
+    </Directory>
+
+    <Feature Id="MainFeature" Title="Atalho" Level="1"
+             Display="hidden" Absent="disallow">
+      <ComponentRef Id="LauncherExecutable" />
+      <ComponentRef Id="StartMenuShortcut" />
+    </Feature>
+    <Feature Id="AutoStartFeature" Title="Start Atalho when I sign in"
+             Description="Creates a shortcut in the current user's Startup folder."
+             Level="2" Absent="allow">
+      <ComponentRef Id="AutoStartShortcut" />
+    </Feature>
+
+    <UI>
+      <UIRef Id="WixUI_FeatureTree" />
+    </UI>
+  </Product>
+
+  <Fragment>
+    <Component Id="LauncherExecutable" Directory="INSTALLDIR" Guid="*" Win64="yes">
+      <File Id="LauncherExe" Source="$(var.CargoTargetBinDir)\Atalho.exe"
+            KeyPath="yes" />
+    </Component>
+
+    <Component Id="StartMenuShortcut" Directory="ApplicationProgramsFolder"
+               Guid="*" Win64="yes">
+      <RegistryValue Root="HKCU" Key="Software\Atalho"
+                     Name="Installed" Type="integer" Value="1" KeyPath="yes" />
+      <Shortcut Id="LauncherStartMenuShortcut" Name="Atalho"
+                Target="[INSTALLDIR]Atalho.exe"
+                WorkingDirectory="INSTALLDIR" Advertise="no" />
+      <RemoveFolder Id="RemoveStartMenuFolder" On="uninstall" />
+    </Component>
+
+    <Component Id="AutoStartShortcut" Directory="StartupFolder" Guid="*" Win64="yes">
+      <RegistryValue Root="HKCU" Key="Software\Atalho\Installer"
+                     Name="AutoStartShortcut" Type="integer" Value="1" KeyPath="yes" />
+      <Shortcut Id="LauncherAutoStartShortcut" Name="Atalho"
+                Target="[INSTALLDIR]Atalho.exe"
+                WorkingDirectory="INSTALLDIR" Advertise="no" />
+    </Component>
+  </Fragment>
+</Wix>
