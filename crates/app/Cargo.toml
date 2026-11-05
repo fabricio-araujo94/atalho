@@ -7,6 +7,9 @@ license.workspace = true
 readme = "README.md"
 description = "Main entry point and orchestrator for the Atalho desktop application"
 
+[lib]
+path = "src/lib.rs"
+
 [lints]
 workspace = true
 

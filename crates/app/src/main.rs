@@ -3,8 +3,7 @@
 //! Composition root that owns the launcher runtime, tray, persistence, and
 //! orderly shutdown sequence.
 
-pub mod search;
-
+use app::search::SearchService;
 use core::{
     AppConfig, AppEntry, AppSource, CommandEntry, Config, Executor, GlobalHotkey, History, Matcher,
     Persistence,
@@ -17,7 +16,6 @@ use persistence::FilePersistence;
 #[cfg(not(windows))]
 use persistence::InMemoryPersistence;
 use platform::{PlatformManager, SingleInstanceGuard, TrayController, TrayEvent};
-use search::SearchService;
 use std::sync::{Arc, mpsc as std_mpsc};
 use std::thread::JoinHandle;
 use tokio::sync::mpsc;
