@@ -29,3 +29,19 @@ uuid = { workspace = true }
 
 [dev-dependencies]
 async-trait = { workspace = true }
+core = { workspace = true }
+indexer = { workspace = true }
+matcher = { workspace = true }
+persistence = { workspace = true }
+tokio = { workspace = true }
+
+[[bench]]
+name = "release_hardening"
+harness = false
+
+[target.'cfg(windows)'.dev-dependencies]
+windows = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_System_ProcessStatus",
+    "Win32_System_Threading",
+] }
