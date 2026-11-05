@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
-readme = "README.md"
+readme.workspace = true
 description = "Main entry point and orchestrator for the Atalho desktop application"
 
 [lib]
