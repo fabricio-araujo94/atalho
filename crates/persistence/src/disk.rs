@@ -26,7 +26,7 @@ struct HistoryRecord {
     id: Uuid,
 }
 
-/// Persistent storage rooted in `%LOCALAPPDATA%\\FlowLauncherRust`.
+/// Persistent storage rooted in `%LOCALAPPDATA%\\Atalho`.
 ///
 /// Use [`FilePersistence::from_dir`] to select a custom directory, for example in tests.
 pub struct FilePersistence {
@@ -54,9 +54,7 @@ impl FilePersistence {
         let local_app_data = std::env::var_os("LOCALAPPDATA").ok_or_else(|| {
             AppError::io_failed("LOCALAPPDATA is not set; cannot resolve persistence directory")
         })?;
-        Ok(Self::from_dir(
-            PathBuf::from(local_app_data).join("FlowLauncherRust"),
-        ))
+        Ok(Self::from_dir(PathBuf::from(local_app_data).join("Atalho")))
     }
 
     /// Creates persistence rooted at the supplied directory.

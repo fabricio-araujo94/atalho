@@ -1,6 +1,6 @@
 # Persistence formats
 
-The default storage directory is `%LOCALAPPDATA%\FlowLauncherRust`.
+The default storage directory is `%LOCALAPPDATA%\Atalho`.
 `FilePersistence::from_dir` can select another directory for tests or portable
 installations.
 
