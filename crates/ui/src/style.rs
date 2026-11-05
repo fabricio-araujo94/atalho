@@ -57,7 +57,7 @@ pub const SETTINGS_CLOSE: &str = "Done";
 /// Search-panel settings button label.
 pub const SETTINGS_BUTTON: &str = "Settings";
 /// Automatic startup option label.
-pub const AUTO_START_LABEL: &str = "Start FlowLauncherRust when I sign in";
+pub const AUTO_START_LABEL: &str = "Start Atalho when I sign in";
 /// Settings-panel height in logical pixels.
 pub const SETTINGS_WINDOW_HEIGHT: f32 = 120.0;
 /// Magnifier glyph used in the search bar.
