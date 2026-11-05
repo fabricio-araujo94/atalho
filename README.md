@@ -1,92 +1,74 @@
 # Atalho
 
-An extensible, lightning-fast desktop application launcher and command palette built with Rust, following Clean Architecture principles.
+Atalho is a keyboard-driven Windows application launcher and command
+palette built with Rust and Iced. It keeps a searchable application index,
+provides fuzzy-ranked results, supports launching apps and shortcuts, and can
+stay in the system tray.
 
-## Project Scope
+## Features
 
-Atalho (Portuguese for *Shortcut*) provides an instant keyboard-driven interface to search, discover, and execute desktop applications and system commands. The architecture enforces strict separation of concerns, dependency inversion, and modularity across dedicated workspace crates.
+- Fuzzy search with cancellation and query debouncing.
+- Cached application index and launch history.
+- Windows shortcut launching, including shortcut elevation behavior.
+- Tray menu for showing the launcher, opening settings, and quitting.
+- Optional per-user sign-in startup shortcut.
+- Search results ranked with historical launch frequency.
 
-## Architecture
+## Screenshots
 
-The workspace is organized following Clean Architecture layers:
+Screenshots are not included yet. Add captures from a Windows 10/11 release
+build here before publishing the first public release.
 
-```text
-               ┌────────────────────────┐
-               │          app           │
-               └───────────┬────────────┘
-                           │
-       ┌──────────────┬────┴─────┬──────────────┐
-       ▼              ▼          ▼              ▼
-     [ ui ]      [ executor ] [ indexer ]  [ persistence ]
-   (iced GUI)         │          │              │
-       │              ▼          │              │
-       │        [ platform ]     │              │
-       │     (windows-rs API)    │              │
-       │              │          │              │
-       └──────────────┼──────────┴──────────────┘
-                      ▼
-                  [ core ]
-          (domain types & traits)
-                      ▲
-                      │
-                 [ matcher ]
-              (fuzzy ranking)
+## Install
+
+Download and run the MSI attached to a tagged GitHub release. The installer
+targets `%ProgramFiles%\Atalho` and adds a Start Menu shortcut. The
+optional **Start Atalho when I sign in** feature can be selected in
+the MSI feature-selection dialog or enabled later in launcher Settings.
+
+The MSI is currently unsigned. Review [SIGNING.md](SIGNING.md) for the
+organization's release-signing procedure. The application does not add itself
+to `PATH`.
+
+## Keyboard shortcuts
+
+| Shortcut | Action |
+|---|---|
+| Up / Down | Move through results |
+| Tab | Select the next result |
+| Enter | Launch the selected result |
+| Esc | Hide the launcher without quitting |
+| Ctrl+1 through Ctrl+9 | Launch the matching visible result |
+| Alt+Space | Configured default launcher hotkey |
+
+## Development setup
+
+Requirements: stable Rust (Edition 2024), the Windows MSVC build tools for
+Windows builds, and WiX Toolset 3.x plus `cargo-wix` for MSI packaging.
+
+```powershell
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test --workspace --all-features
+cargo run --package app
 ```
 
-### Workspace Member Crates
+Build an optimized Windows binary and installer:
 
-| Crate | Responsibility | Dependencies |
-|---|---|---|
-| `core` | Domain models (`AppEntry`, `CommandEntry`, `SearchResult`, `Score`), contracts (`Indexer`, `Matcher`, `Executor`, `Persistence`), and domain error types (`AppError`). Zero external domain or platform dependencies. | `thiserror`, `serde`, `async-trait` |
-| `indexer` | Discovers and indexes installed applications and executable system commands. | `core` |
-| `matcher` | High-performance fuzzy matching and relevance scoring engine. | `core` |
-| `executor` | Executes matched applications, scripts, or system commands. | `core`, `platform` |
-| `persistence` | Storage layer for search history, preferences, and cache. | `core` |
-| `platform` | Operating system abstractions and native Windows APIs (via `windows-rs` gated behind `cfg(windows)`). | `core`, `windows` |
-| `ui` | Graphical user interface powered by [Iced](https://iced.rs). | `core`, `iced` |
-| `app` | Binary application entry point and composition root wiring all components together. | All crates above |
-
-## Prerequisites
-
-- Rust stable toolchain (Edition 2024, pinned in `rust-toolchain.toml`)
-- [Just](https://github.com/casey/just) command runner (optional, standard `cargo` commands can also be used)
-
-## Development
-
-A `justfile` is included with tasks for standard workflows:
-
-```bash
-# Build all workspace crates
-just build
-# or: cargo build --workspace
-
-# Run all workspace unit and integration tests
-just test
-# or: cargo test --workspace
-
-# Run clippy with strict warning enforcement
-just lint
-# or: cargo clippy --all-targets --all-features -- -D warnings
-
-# Check code formatting
-just fmt-check
-# or: cargo fmt --check
-
-# Format code
-just fmt
-# or: cargo fmt
-
-# Launch the desktop application
-just run
-# or: cargo run -p app
+```powershell
+cargo build --release --package app
+cargo install cargo-wix --locked
+cargo wix --package app --include wix\main.wxs
 ```
 
-## Quality Standards
+Run the end-to-end startup, search, and memory benchmark on Windows:
 
-- **Strict Clippy Configuration**: `clippy::all`, `clippy::pedantic`, and `clippy::nursery` enabled as warnings; `clippy::unwrap_used` strictly denied.
-- **Robust Error Handling**: Library crates use domain `Result` propagation with `AppError` without unwrap or panic.
-- **Documentation**: All public types, functions, methods, and traits are thoroughly documented in English.
+```powershell
+$env:BENCHMARK_TIMESTAMP = Get-Date -Format "yyyy-MM-dd HH:mm:ss zzz"
+$env:BENCHMARKS_OUTPUT = Join-Path $PWD "BENCHMARKS.md"
+cargo bench --package app --bench release_hardening
+```
 
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+See [ARCHITECTURE.md](ARCHITECTURE.md), [CONTRIBUTING.md](CONTRIBUTING.md),
+[BENCHMARKS.md](BENCHMARKS.md), and [crates/app/LIFECYCLE.md](crates/app/LIFECYCLE.md)
+for implementation and project details.
