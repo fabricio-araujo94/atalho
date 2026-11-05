@@ -2,63 +2,157 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
+    tags: ["v*"]
   pull_request:
-    branches: [ main ]
+    branches: [main]
+  schedule:
+    - cron: "23 5 * * 1"
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
+  CARGO_BUILD_JOBS: 4
+
+permissions:
+  contents: read
 
 jobs:
-  windows-ci:
-    name: Windows (Build & Test)
+  lint:
+    name: Format and lint
     runs-on: windows-latest
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Run Clippy
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
-      - name: Setup Rust caching
-        uses: Swatinem/rust-cache@v2
-
-      - name: Check code formatting
-        run: cargo fmt --check
-
-      - name: Run clippy linter
-        run: cargo clippy --all-targets --all-features -- -D warnings
-
+  test:
+    name: Workspace tests
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - name: Run workspace tests
         run: cargo test --workspace --all-features
 
-      - name: Build workspace release artifacts
-        run: cargo build --release --workspace
-
-  linux-check:
-    name: Linux (Stub & Cross-Platform Check)
-    runs-on: ubuntu-latest
-
+  build:
+    name: Windows release build and size analysis
+    runs-on: windows-latest
+    outputs:
+      binary_bytes: ${{ steps.size.outputs.binary_bytes }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Setup Rust caching
-        uses: Swatinem/rust-cache@v2
-
-      - name: Install system dependencies for graphical crates
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build release executable
+        run: cargo build --release --package app
+      - name: Record executable size
+        id: size
+        shell: pwsh
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libxkbcommon-dev libasound2-dev libfontconfig1-dev libwayland-dev
+          $exe = Get-Item "target\release\Atalho.exe"
+          Write-Host "Release executable: $($exe.Length) bytes"
+          "binary_bytes=$($exe.Length)" >> $env:GITHUB_OUTPUT
+      - name: Install cargo-bloat
+        run: cargo install cargo-bloat --locked --jobs 4
+      - name: Analyze release code size
+        shell: pwsh
+        run: |
+          cargo bloat --release --package app --bin Atalho --crates |
+            Tee-Object -FilePath target\release\cargo-bloat.txt
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-release-executable
+          path: |
+            target/release/Atalho.exe
+            target/release/cargo-bloat.txt
 
-      - name: Check non-Windows compilation
-        run: cargo check --workspace
+  bench:
+    name: Weekly Windows benchmarks
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: [self-hosted, Windows, X64]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - name: Run release benchmark harness
+        shell: pwsh
+        run: |
+          $env:BENCHMARK_TIMESTAMP = Get-Date -Format "yyyy-MM-dd HH:mm:ss zzz"
+          $env:BENCHMARKS_OUTPUT = Join-Path $env:GITHUB_WORKSPACE "BENCHMARKS.md"
+          cargo bench --package app --bench release_hardening
+      - name: Record release binary size
+        shell: pwsh
+        run: |
+          cargo build --release --package app
+          $bytes = (Get-Item "target\release\Atalho.exe").Length
+          $mib = [math]::Round($bytes / 1MB, 2)
+          $report = Get-Content "BENCHMARKS.md" -Raw
+          $row = "| Atalho.exe release size | $mib MiB ($bytes bytes) |`n"
+          $report = $report -replace '(\| Measurement \| Result \|\r?\n\|---\|---:\|\r?\n)', "`$1$row"
+          Set-Content "BENCHMARKS.md" $report -NoNewline
+      - name: Upload benchmark report
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-benchmark-report
+          path: BENCHMARKS.md
+      - name: Commit scheduled benchmark update
+        if: github.event_name == 'schedule'
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add BENCHMARKS.md
+          git diff --cached --quiet
+          if ($LASTEXITCODE -ne 0) {
+            git commit -m "docs: update weekly benchmark results"
+            git push
+          }
 
-      - name: Run cross-platform library tests
-        run: cargo test -p core -p matcher -p persistence
+  package:
+    name: Build and publish MSI
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build]
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Verify WiX Toolset
+        shell: pwsh
+        run: |
+          if (-not (Get-Command candle.exe -ErrorAction SilentlyContinue)) {
+            choco install wixtoolset --no-progress -y
+            "${env:ProgramFiles(x86)}\WiX Toolset v3.14\bin" >> $env:GITHUB_PATH
+            $env:PATH += ";${env:ProgramFiles(x86)}\WiX Toolset v3.14\bin"
+          }
+          if (-not (Get-Command candle.exe -ErrorAction SilentlyContinue)) {
+            throw "WiX Toolset 3.x candle.exe was not found."
+          }
+      - name: Install cargo-wix
+        run: cargo install cargo-wix --locked
+      - name: Build MSI
+        run: cargo wix --package app --include wix/main.wxs
+      - name: Upload MSI to GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: target/wix/*.msi
+          generate_release_notes: true
