@@ -51,9 +51,9 @@ mod windows_impl {
     };
     use windows::core::{Interface, PCWSTR};
 
-    const MUTEX_NAME: &str = "Global\\FlowLauncherRust.SingleInstance";
-    const SHOW_EVENT_NAME: &str = "Global\\FlowLauncherRust.Show";
-    const TRAY_CLASS: &str = "FlowLauncherRustTrayWindow";
+    const MUTEX_NAME: &str = "Global\\Atalho.SingleInstance";
+    const SHOW_EVENT_NAME: &str = "Global\\Atalho.Show";
+    const TRAY_CLASS: &str = "AtalhoTrayWindow";
     const TRAY_MESSAGE: u32 = 0x8000 + 41;
     const WM_NCCREATE: u32 = 0x0081;
     const WM_NCDESTROY: u32 = 0x0082;
@@ -295,7 +295,7 @@ mod windows_impl {
                 hIcon: LoadIconW(None, IDI_APPLICATION).unwrap_or_default(),
                 ..NOTIFYICONDATAW::default()
             };
-            let tip = wide("FlowLauncherRust");
+            let tip = wide("Atalho");
             for (slot, unit) in data.szTip.iter_mut().zip(tip.iter().copied()) {
                 *slot = unit;
             }
@@ -431,7 +431,7 @@ mod windows_impl {
             .join("Start Menu")
             .join("Programs")
             .join("Startup")
-            .join("FlowLauncherRust.lnk");
+            .join("Atalho.lnk");
         if !enabled {
             return match std::fs::remove_file(&startup) {
                 Ok(()) => Ok(()),
