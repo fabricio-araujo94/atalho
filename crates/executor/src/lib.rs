@@ -254,13 +254,16 @@ mod windows_process {
         let (application_name, command_line) = if is_batch {
             let command_interpreter =
                 std::env::var_os("COMSPEC").unwrap_or_else(|| OsStr::new("cmd.exe").to_os_string());
+            let application_name = Path::new(&command_interpreter)
+                .is_absolute()
+                .then(|| wide(&command_interpreter));
             let command = format!(
                 "\"{}\" /D /S /C \"\"{}\" {}\"",
                 command_interpreter.to_string_lossy(),
                 path.display(),
                 arguments.unwrap_or_default()
             );
-            (wide(&command_interpreter), wide(OsStr::new(&command)))
+            (application_name, wide(OsStr::new(&command)))
         } else {
             let command = match arguments {
                 Some(arguments) if !arguments.is_empty() => {
@@ -268,7 +271,10 @@ mod windows_process {
                 }
                 _ => format!("\"{}\"", path.display()),
             };
-            (path_wide, wide(OsStr::new(&command)))
+            (
+                path.is_absolute().then_some(path_wide),
+                wide(OsStr::new(&command)),
+            )
         };
 
         let startup_info = STARTUPINFOW {
@@ -276,11 +282,16 @@ mod windows_process {
             ..STARTUPINFOW::default()
         };
         let mut process_info = PROCESS_INFORMATION::default();
-        let current_directory = path.parent().map(|parent| wide(parent.as_os_str()));
+        let current_directory = path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .map(|parent| wide(parent.as_os_str()));
         // SAFETY: `command_line` is mutable, NUL-terminated and remains alive for this call.
         unsafe {
             CreateProcessW(
-                PCWSTR(application_name.as_ptr()),
+                application_name
+                    .as_ref()
+                    .map_or(PCWSTR::null(), |name| PCWSTR(name.as_ptr())),
                 PWSTR(command_line.as_ptr().cast_mut()),
                 None,
                 None,
