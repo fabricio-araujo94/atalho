@@ -4,10 +4,7 @@
 //! orderly shutdown sequence.
 
 use app::search::SearchService;
-use core::{
-    AppConfig, AppEntry, AppSource, CommandEntry, Config, Executor, GlobalHotkey, History, Matcher,
-    Persistence,
-};
+use core::{AppConfig, Config, Executor, GlobalHotkey, History, Matcher, Persistence};
 use executor::SystemExecutor;
 use indexer::DefaultIndexer;
 use matcher::FuzzyMatcher;
@@ -240,21 +237,7 @@ fn start_tray_event_bridge(
 }
 
 fn default_indexer() -> Arc<DefaultIndexer> {
-    let apps = vec![
-        AppEntry::new("Calculator", "calc.exe", AppSource::StartMenu)
-            .with_description("Perform mathematical calculations")
-            .with_keywords(["math", "calc"]),
-        AppEntry::new("Notepad", "notepad.exe", AppSource::StartMenu)
-            .with_description("Simple plain-text editor")
-            .with_keywords(["editor", "text"]),
-    ];
-    let commands = vec![
-        CommandEntry::new("lock", "Lock Workstation", "rundll32.exe")
-            .with_args(["user32.dll,LockWorkStation"])
-            .with_description("Locks the current user session")
-            .with_keywords(["lock", "screen"]),
-    ];
-    Arc::new(DefaultIndexer::with_entries(apps, commands))
+    Arc::new(DefaultIndexer::new())
 }
 
 fn start_auto_start_worker(
