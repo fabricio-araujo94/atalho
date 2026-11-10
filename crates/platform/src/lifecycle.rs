@@ -65,6 +65,15 @@ mod windows_impl {
     const MENU_SETTINGS: usize = 2;
     const MENU_QUIT: usize = 3;
 
+    struct ComGuard;
+
+    impl Drop for ComGuard {
+        fn drop(&mut self) {
+            // SAFETY: This guard is created only after successful COM initialization.
+            unsafe { CoUninitialize() };
+        }
+    }
+
     /// Owns the named mutex and secondary-instance show-signal listener.
     pub struct SingleInstanceGuard {
         mutex: HANDLE,
@@ -462,6 +471,7 @@ mod windows_impl {
         com_result.map_err(|error| {
             AppError::platform_failed(format!("Initialize COM for auto-start shortcut: {error}"))
         })?;
+        let _com_guard = ComGuard;
         let result = unsafe {
             let link: IShellLinkW = CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER)
                 .map_err(|error| {
@@ -487,7 +497,6 @@ mod windows_impl {
                     ))
                 })
         };
-        unsafe { CoUninitialize() };
         result
     }
 
