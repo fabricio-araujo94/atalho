@@ -38,6 +38,7 @@ pub const PENALTY_UNMATCHED_QUERY: i64 = 1;
 
 struct MatchScratch {
     char_indices: Vec<usize>,
+    normalized_to_original: Vec<usize>,
     chars_target: Vec<char>,
     chars_query: Vec<char>,
     chars_orig: Vec<char>,
@@ -48,6 +49,7 @@ impl MatchScratch {
     const fn new() -> Self {
         Self {
             char_indices: Vec::new(),
+            normalized_to_original: Vec::new(),
             chars_target: Vec::new(),
             chars_query: Vec::new(),
             chars_orig: Vec::new(),
@@ -57,6 +59,7 @@ impl MatchScratch {
 
     fn clear(&mut self) {
         self.char_indices.clear();
+        self.normalized_to_original.clear();
         self.chars_target.clear();
         self.chars_query.clear();
         self.chars_orig.clear();
@@ -133,6 +136,18 @@ impl FuzzyMatcher {
             }
 
             scratch.chars_orig.extend(candidate_name.chars());
+            for original_idx in 0..scratch.chars_orig.len() {
+                let original_char = scratch.chars_orig[original_idx];
+                if !original_char.is_ascii_punctuation() {
+                    scratch
+                        .normalized_to_original
+                        .extend(original_char.to_lowercase().map(|_| original_idx));
+                }
+            }
+            if scratch.normalized_to_original.len() != target_len {
+                return None;
+            }
+
             let orig_len = scratch.chars_orig.len();
             let mut score: i64 = 0;
             let mut prev_matched_idx: Option<usize> = None;
@@ -140,6 +155,7 @@ impl FuzzyMatcher {
 
             for pos_in_query in 0..num_matches {
                 let idx = scratch.char_indices[pos_in_query];
+                let original_idx = scratch.normalized_to_original[idx];
                 // 1. Consecutive match bonus
                 if let Some(prev) = prev_matched_idx {
                     if idx == prev + 1 {
@@ -161,13 +177,13 @@ impl FuzzyMatcher {
                 }
 
                 // 3. Word boundary bonus
-                if idx > 0 && is_word_boundary(&scratch.chars_orig, idx) {
+                if original_idx > 0 && is_word_boundary(&scratch.chars_orig, original_idx) {
                     score += BONUS_WORD_BOUNDARY;
                 }
 
                 // 4. Exact case match bonus
-                if idx < orig_len && pos_in_query < query_len {
-                    let orig_char = scratch.chars_orig[idx];
+                if original_idx < orig_len && pos_in_query < query_len {
+                    let orig_char = scratch.chars_orig[original_idx];
                     let q_raw_char = query.chars().nth(pos_in_query).unwrap_or(orig_char);
                     if orig_char == q_raw_char {
                         score += BONUS_CASE_EXACT;
@@ -175,7 +191,7 @@ impl FuzzyMatcher {
                 }
 
                 prev_matched_idx = Some(idx);
-                scratch.match_positions.push(idx);
+                scratch.match_positions.push(original_idx);
             }
 
             // Penalty for trailing unmatched characters in candidate
@@ -367,6 +383,13 @@ mod tests {
         assert!(is_word_boundary(&chars_delim, 10)); // 'p' after '_'
         assert!(is_word_boundary(&chars_delim, 17)); // 'a' after '.'
         assert!(is_word_boundary(&chars_delim, 21)); // 'b' after '/'
+    }
+
+    #[test]
+    fn test_punctuation_maps_match_positions_to_original_name() {
+        let result = FuzzyMatcher::score_candidate("j", "Node.js", "nodejs");
+
+        assert_eq!(result, Some((5, vec![5])));
     }
 
     #[test]
