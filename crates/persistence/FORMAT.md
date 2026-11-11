@@ -6,9 +6,12 @@ installations.
 
 ## Application index: `index.bin.zst`
 
-The index is a bincode serialization of `Vec<AppEntry>` compressed with zstd.
-Updates are written to a uniquely named `index.bin.zst.<uuid>.tmp` file, synced,
-and renamed into place only after the complete compressed payload has been written.
+The index starts with an eight-byte `ATIDX001` magic value and an unsigned
+little-endian 64-bit entry count. The remaining bytes are a zstd-compressed
+bincode serialization of `Vec<AppEntry>`. Older files without this header are
+read as the original compressed bincode format. Updates are written to a uniquely
+named `index.bin.zst.<uuid>.tmp` file, synced, and renamed into place only after
+the complete index has been written.
 
 ## Launch history: `history.bin`
 

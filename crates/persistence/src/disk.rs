@@ -10,11 +10,13 @@ use std::sync::Mutex;
 #[cfg(any(test, feature = "test-utils"))]
 use std::sync::RwLock;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Mutex as AsyncMutex;
 use uuid::Uuid;
 
 const INDEX_FILE: &str = "index.bin.zst";
+const INDEX_MAGIC: &[u8; 8] = b"ATIDX001";
+const INDEX_HEADER_SIZE: usize = 16;
 const HISTORY_FILE: &str = "history.bin";
 const ROTATED_HISTORY_FILE: &str = "history.1.bin";
 const CONFIG_FILE: &str = "config.toml";
@@ -32,6 +34,7 @@ struct HistoryRecord {
 pub struct FilePersistence {
     root: PathBuf,
     cache_lock: AsyncMutex<()>,
+    index_count: Mutex<Option<usize>>,
     history_lock: AsyncMutex<()>,
     config_lock: Mutex<()>,
 }
@@ -63,6 +66,7 @@ impl FilePersistence {
         Self {
             root: root.into(),
             cache_lock: AsyncMutex::new(()),
+            index_count: Mutex::new(None),
             history_lock: AsyncMutex::new(()),
             config_lock: Mutex::new(()),
         }
@@ -70,6 +74,22 @@ impl FilePersistence {
 
     fn file_path(&self, file_name: &str) -> PathBuf {
         self.root.join(file_name)
+    }
+
+    fn cached_index_count(&self) -> Result<Option<usize>> {
+        self.index_count
+            .lock()
+            .map(|count| *count)
+            .map_err(|error| AppError::io_failed(format!("index count lock: {error}")))
+    }
+
+    fn cache_index_count(&self, count: usize) -> Result<()> {
+        *self
+            .index_count
+            .lock()
+            .map_err(|error| AppError::io_failed(format!("index count lock: {error}")))? =
+            Some(count);
+        Ok(())
     }
 
     async fn save_index(&self, entries: &[AppEntry]) -> Result<()> {
@@ -80,9 +100,18 @@ impl FilePersistence {
             let serialized = bincode::serialize(&entries).map_err(|error| {
                 AppError::io_failed(format!("{path_context}: serialize index: {error}"))
             })?;
-            zstd::stream::encode_all(serialized.as_slice(), 0).map_err(|error| {
-                AppError::io_failed(format!("{path_context}: compress index: {error}"))
-            })
+            let compressed =
+                zstd::stream::encode_all(serialized.as_slice(), 0).map_err(|error| {
+                    AppError::io_failed(format!("{path_context}: compress index: {error}"))
+                })?;
+            let count = u64::try_from(entries.len()).map_err(|error| {
+                AppError::io_failed(format!("{path_context}: index entry count: {error}"))
+            })?;
+            let mut index = Vec::with_capacity(INDEX_HEADER_SIZE + compressed.len());
+            index.extend_from_slice(INDEX_MAGIC);
+            index.extend_from_slice(&count.to_le_bytes());
+            index.extend_from_slice(&compressed);
+            Ok::<Vec<u8>, AppError>(index)
         })
         .await
         .map_err(|error| {
@@ -98,16 +127,46 @@ impl FilePersistence {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
             Err(error) => return Err(path_error(&path, error)),
         };
+        let expected_count = if compressed.starts_with(INDEX_MAGIC) {
+            if compressed.len() < INDEX_HEADER_SIZE {
+                return Err(AppError::io_failed(format!(
+                    "{}: incomplete index header",
+                    path.display()
+                )));
+            }
+            let count_bytes: [u8; 8] = compressed[INDEX_MAGIC.len()..INDEX_HEADER_SIZE]
+                .try_into()
+                .map_err(|_| {
+                    AppError::io_failed(format!("{}: invalid index count", path.display()))
+                })?;
+            Some(
+                usize::try_from(u64::from_le_bytes(count_bytes)).map_err(|error| {
+                    AppError::io_failed(format!("{}: invalid index count: {error}", path.display()))
+                })?,
+            )
+        } else {
+            None
+        };
+        let payload_start = if expected_count.is_some() {
+            INDEX_HEADER_SIZE
+        } else {
+            0
+        };
         tokio::task::spawn_blocking(move || {
             let decompressed =
-                zstd::stream::decode_all(compressed.as_slice()).map_err(|error| {
+                zstd::stream::decode_all(&compressed[payload_start..]).map_err(|error| {
                     AppError::io_failed(format!("{}: decompress: {error}", path.display()))
                 })?;
-            bincode::deserialize(&decompressed)
-                .map(Some)
-                .map_err(|error| {
-                    AppError::io_failed(format!("{}: deserialize: {error}", path.display()))
-                })
+            let entries: Vec<AppEntry> = bincode::deserialize(&decompressed).map_err(|error| {
+                AppError::io_failed(format!("{}: deserialize: {error}", path.display()))
+            })?;
+            if expected_count.is_some_and(|count| count != entries.len()) {
+                return Err(AppError::io_failed(format!(
+                    "{}: index entry count does not match header",
+                    path.display()
+                )));
+            }
+            Ok(Some(entries))
         })
         .await
         .map_err(|error| AppError::io_failed(format!("index decompression task failed: {error}")))?
@@ -224,25 +283,55 @@ impl FilePersistence {
 impl IndexCache for FilePersistence {
     async fn load(&self) -> Result<Option<Vec<AppEntry>>> {
         let _guard = self.cache_lock.lock().await;
-        self.load_index().await
+        let entries = self.load_index().await?;
+        self.cache_index_count(entries.as_ref().map_or(0, Vec::len))?;
+        Ok(entries)
     }
 
     async fn save(&self, entries: &[AppEntry]) -> Result<()> {
         let _guard = self.cache_lock.lock().await;
-        self.save_index(entries).await
+        self.save_index(entries).await?;
+        self.cache_index_count(entries.len())
     }
 
     async fn metadata(&self) -> Result<CacheMetadata> {
         let _guard = self.cache_lock.lock().await;
         let path = self.file_path(INDEX_FILE);
-        let timestamp = match tokio::fs::metadata(&path).await {
-            Ok(metadata) => metadata
-                .modified()
-                .map_err(|error| path_error(&path, error))?,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => UNIX_EPOCH,
+        let file_metadata = match tokio::fs::metadata(&path).await {
+            Ok(metadata) => Some(metadata),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
             Err(error) => return Err(path_error(&path, error)),
         };
-        let count = self.load_index().await?.map_or(0, |entries| entries.len());
+        let timestamp = match &file_metadata {
+            Some(metadata) => metadata
+                .modified()
+                .map_err(|error| path_error(&path, error))?,
+            None => UNIX_EPOCH,
+        };
+        let count = if file_metadata.is_none() {
+            0
+        } else if let Some(count) = self.cached_index_count()? {
+            count
+        } else {
+            let mut file = tokio::fs::File::open(&path)
+                .await
+                .map_err(|error| path_error(&path, error))?;
+            let mut magic = [0; INDEX_MAGIC.len()];
+            let has_header = file.read_exact(&mut magic).await.is_ok() && &magic == INDEX_MAGIC;
+            let count = if has_header {
+                let mut count_bytes = [0; 8];
+                file.read_exact(&mut count_bytes)
+                    .await
+                    .map_err(|error| path_error(&path, error))?;
+                usize::try_from(u64::from_le_bytes(count_bytes)).map_err(|error| {
+                    AppError::io_failed(format!("{}: invalid index count: {error}", path.display()))
+                })?
+            } else {
+                self.load_index().await?.map_or(0, |entries| entries.len())
+            };
+            self.cache_index_count(count)?;
+            count
+        };
         Ok(CacheMetadata { timestamp, count })
     }
 }
@@ -569,10 +658,43 @@ mod tests {
         );
         let metadata = IndexCache::metadata(&persistence).await;
         assert_eq!(metadata.map(|value| value.count).ok(), Some(1));
+        let bytes = tokio::fs::read(directory.join(INDEX_FILE))
+            .await
+            .unwrap_or_default();
+        assert!(bytes.starts_with(INDEX_MAGIC));
         assert!(
             tokio::fs::try_exists(directory.join(INDEX_FILE))
                 .await
                 .unwrap_or(false)
+        );
+        let _ = tokio::fs::remove_dir_all(directory).await;
+    }
+
+    #[tokio::test]
+    async fn index_cache_reads_legacy_format() {
+        let directory = test_directory();
+        let persistence = FilePersistence::from_dir(&directory);
+        let apps = vec![AppEntry::new(
+            "Editor",
+            "C:\\Apps\\editor.exe",
+            AppSource::Path,
+        )];
+        let serialized = bincode::serialize(&apps).unwrap_or_default();
+        let compressed = zstd::stream::encode_all(serialized.as_slice(), 0).unwrap_or_default();
+        assert!(tokio::fs::create_dir_all(&directory).await.is_ok());
+        assert!(
+            tokio::fs::write(directory.join(INDEX_FILE), compressed)
+                .await
+                .is_ok()
+        );
+
+        assert_eq!(IndexCache::load(&persistence).await.ok(), Some(Some(apps)));
+        assert_eq!(
+            IndexCache::metadata(&persistence)
+                .await
+                .map(|metadata| metadata.count)
+                .ok(),
+            Some(1)
         );
         let _ = tokio::fs::remove_dir_all(directory).await;
     }
