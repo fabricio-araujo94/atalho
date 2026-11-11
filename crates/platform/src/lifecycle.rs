@@ -232,7 +232,7 @@ mod windows_impl {
         ///
         /// # Errors
         /// Returns an error if the tray thread cannot be stopped or cleanup fails.
-        pub fn shutdown(&mut self) -> Result<()> {
+        pub const fn shutdown(&mut self) -> Result<()> {
             if let Some(thread) = self.thread.take() {
                 let post_result = unsafe {
                     PostThreadMessageW(
@@ -544,7 +544,7 @@ mod windows_impl {
         ///
         /// # Errors
         /// Returns an error if instance coordination cannot be initialized.
-        pub fn acquire() -> Result<Option<Self>> {
+        pub const fn acquire() -> Result<Option<Self>> {
             Ok(Some(Self))
         }
 
@@ -560,9 +560,13 @@ mod windows_impl {
         ///
         /// # Errors
         /// This implementation does not fail.
-        pub fn stop_listening(&mut self) -> Result<()> {
+        pub const fn stop_listening(&mut self) -> Result<()> {
             Ok(())
         }
+    }
+
+    impl Drop for SingleInstanceGuard {
+        fn drop(&mut self) {}
     }
 
     pub struct TrayController;
@@ -580,7 +584,7 @@ mod windows_impl {
         ///
         /// # Errors
         /// This implementation does not fail.
-        pub fn shutdown(&mut self) -> Result<()> {
+        pub const fn shutdown(&mut self) -> Result<()> {
             Ok(())
         }
     }

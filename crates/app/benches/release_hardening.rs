@@ -171,6 +171,6 @@ fn process_memory_bytes() -> Option<u64> {
 }
 
 #[cfg(not(windows))]
-fn process_memory_bytes() -> Option<u64> {
+const fn process_memory_bytes() -> Option<u64> {
     None
 }

@@ -149,10 +149,10 @@ impl PlatformManager {
 
         #[cfg(not(windows))]
         {
-            let mut paths = Vec::new();
-            paths.push(PathBuf::from("/usr/share/applications"));
-            paths.push(PathBuf::from("/usr/local/share/applications"));
-            paths
+            vec![
+                PathBuf::from("/usr/share/applications"),
+                PathBuf::from("/usr/local/share/applications"),
+            ]
         }
     }
 

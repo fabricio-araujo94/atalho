@@ -147,6 +147,7 @@ pub use windows_impl::*;
 
 #[cfg(not(windows))]
 mod stub_impl {
+    use core::{AppError, Result};
     use std::path::{Path, PathBuf};
 
     #[derive(Debug, Clone, Default)]
@@ -157,8 +158,12 @@ mod stub_impl {
         pub requires_admin: bool,
     }
 
-    pub fn parse_shortcut(_lnk_path: &Path) -> Result<ShortcutInfo, ()> {
-        Err(())
+    /// Returns an unsupported-platform error because shell links require Windows COM.
+    ///
+    /// # Errors
+    /// Always returns [`AppError::PlatformFailed`] on non-Windows platforms.
+    pub fn parse_shortcut(_lnk_path: &Path) -> Result<ShortcutInfo> {
+        Err(AppError::unsupported_platform())
     }
 }
 

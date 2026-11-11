@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::SystemTime;
 
+#[cfg(windows)]
 const ICON_SIZE: usize = 16;
 const ICON_CACHE_CAPACITY: usize = 512;
 
@@ -50,12 +51,15 @@ pub async fn icon_for(path: &Path) -> core::Result<Image> {
     }
 
     let path_buf = path.to_path_buf();
-    let image = tokio::task::spawn_blocking(move || extract_icon(&path_buf))
+    let task_result = tokio::task::spawn_blocking(move || extract_icon(&path_buf))
         .await
         .map_err(|error| {
             core::AppError::platform_failed(format!("icon extraction task failed: {error}"))
-        })?
-        .unwrap_or_else(|_| Image::generic());
+        })?;
+    #[cfg(windows)]
+    let image = task_result.unwrap_or_else(|_| Image::generic());
+    #[cfg(not(windows))]
+    let image = task_result;
     insert_cache(key, image.clone());
     Ok(image)
 }
@@ -66,22 +70,6 @@ fn touch_lru(key: &CacheKey) {
             let _ = lru.remove(position);
         }
         lru.push_back(key.clone());
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn missing_icon_uses_generic_fallback() {
-        let image = icon_for(Path::new("nonexistent-application-icon.exe"))
-            .await
-            .expect("icon lookup should return a fallback");
-
-        assert_eq!(image.width, 16);
-        assert_eq!(image.height, 16);
-        assert_eq!(image.rgba.len(), 16 * 16 * 4);
     }
 }
 
@@ -113,8 +101,8 @@ fn extract_icon(path: &Path) -> core::Result<Image> {
 }
 
 #[cfg(not(windows))]
-fn extract_icon(_path: &Path) -> core::Result<Image> {
-    Ok(Image::generic())
+fn extract_icon(_path: &Path) -> Image {
+    Image::generic()
 }
 
 #[cfg(windows)]
@@ -250,5 +238,21 @@ mod windows_icon {
             height: u32::try_from(ICON_SIZE).unwrap_or(16),
             rgba: bgra,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn missing_icon_uses_generic_fallback() {
+        let image = icon_for(Path::new("nonexistent-application-icon.exe"))
+            .await
+            .expect("icon lookup should return a fallback");
+
+        assert_eq!(image.width, 16);
+        assert_eq!(image.height, 16);
+        assert_eq!(image.rgba.len(), 16 * 16 * 4);
     }
 }
