@@ -182,11 +182,9 @@ impl FilePersistence {
                 Err(error) => return Err(path_error(&path, error)),
             };
             if bytes.len() % HISTORY_RECORD_SIZE != 0 {
-                return Err(AppError::io_failed(format!(
-                    "{}: incomplete history record",
-                    path.display()
-                )));
+                truncate_partial_history_file(&path).await?;
             }
+            let bytes = tokio::fs::read(&path).await.map_err(|error| path_error(&path, error))?;
             let (chunks, _) = bytes.as_chunks::<HISTORY_RECORD_SIZE>();
             records.extend(chunks.iter().map(|chunk| {
                 let id = Uuid::from_bytes(chunk[8..].try_into().unwrap_or([0; 16]));
@@ -201,17 +199,9 @@ impl FilePersistence {
         tokio::fs::create_dir_all(&self.root)
             .await
             .map_err(|error| path_error(&self.root, error))?;
+        truncate_partial_history_file(&path).await?;
         let count = match tokio::fs::metadata(&path).await {
-            Ok(metadata) => {
-                let len = metadata.len();
-                if len % HISTORY_RECORD_SIZE as u64 != 0 {
-                    return Err(AppError::io_failed(format!(
-                        "{}: incomplete history record",
-                        path.display()
-                    )));
-                }
-                len / HISTORY_RECORD_SIZE as u64
-            }
+            Ok(metadata) => metadata.len() / HISTORY_RECORD_SIZE as u64,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => 0,
             Err(error) => return Err(path_error(&path, error)),
         };
@@ -476,6 +466,33 @@ impl IndexCache for InMemoryCache {
 #[derive(Debug, Default)]
 pub struct InMemoryHistory {
     records: RwLock<Vec<(SystemTime, Uuid)>>,
+}
+
+async fn truncate_partial_history_file(path: &Path) -> Result<()> {
+    let len = match tokio::fs::metadata(path).await {
+        Ok(metadata) => metadata.len(),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(path_error(path, error)),
+    };
+    let remainder = len % u64::try_from(HISTORY_RECORD_SIZE).map_err(|error| {
+        AppError::io_failed(format!("{}: invalid history record size: {error}", path.display()))
+    })?;
+    if remainder == 0 {
+        return Ok(());
+    }
+    let truncated = len - remainder;
+    let file = tokio::fs::OpenOptions::new()
+        .write(true)
+        .open(path)
+        .await
+        .map_err(|error| path_error(path, error))?;
+    file.set_len(truncated)
+        .await
+        .map_err(|error| path_error(path, error))?;
+    file.sync_all()
+        .await
+        .map_err(|error| path_error(path, error))?;
+    Ok(())
 }
 
 #[cfg(any(test, feature = "test-utils"))]
@@ -765,6 +782,30 @@ mod tests {
             History::recent(&persistence, 1).await.ok(),
             Some(vec![current])
         );
+        let _ = tokio::fs::remove_dir_all(directory).await;
+    }
+
+    #[tokio::test]
+    async fn history_truncates_partial_record_instead_of_failing() {
+        let directory = test_directory();
+        let persistence = FilePersistence::from_dir(&directory);
+        let existing = Uuid::new_v4();
+        let latest = Uuid::new_v4();
+        let history_path = directory.join(HISTORY_FILE);
+        let mut valid_record = [0_u8; HISTORY_RECORD_SIZE];
+        valid_record[..8].copy_from_slice(&(1_u64).to_le_bytes());
+        valid_record[8..].copy_from_slice(existing.as_bytes());
+        let invalid_tail = [1_u8, 2, 3, 4, 5];
+
+        assert!(tokio::fs::create_dir_all(&directory).await.is_ok());
+        assert!(
+            tokio::fs::write(&history_path, [valid_record.as_slice(), invalid_tail.as_slice()].concat())
+                .await
+                .is_ok()
+        );
+
+        assert!(History::record(&persistence, latest).await.is_ok());
+        assert_eq!(History::recent(&persistence, 2).await.ok(), Some(vec![latest, existing]));
         let _ = tokio::fs::remove_dir_all(directory).await;
     }
 
