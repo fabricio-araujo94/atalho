@@ -20,6 +20,7 @@ pub enum TrayEvent {
 #[cfg(windows)]
 mod windows_impl {
     use super::{AppError, Result, TrayEvent, mpsc};
+    use crate::WindowsGlobalHotkey;
     use std::ffi::OsStr;
     use std::mem::size_of;
     use std::os::windows::ffi::OsStrExt;
@@ -47,7 +48,7 @@ mod windows_impl {
         DestroyWindow, DispatchMessageW, GWLP_USERDATA, GetCursorPos, GetMessageW,
         GetWindowLongPtrW, IDI_APPLICATION, LoadIconW, MF_STRING, MSG, PostMessageW,
         PostThreadMessageW, RegisterClassW, SetForegroundWindow, SetWindowLongPtrW, TPM_NONOTIFY,
-        TPM_RETURNCMD, TrackPopupMenu, TranslateMessage, WNDCLASSW, WS_OVERLAPPED,
+        TPM_RETURNCMD, TrackPopupMenu, TranslateMessage, WM_HOTKEY, WNDCLASSW, WS_OVERLAPPED,
     };
     use windows::core::{Interface, PCWSTR};
 
@@ -263,6 +264,7 @@ mod windows_impl {
         unsafe {
             let thread_id = windows::Win32::System::Threading::GetCurrentThreadId();
             let class_name = wide(TRAY_CLASS);
+            let hotkey_sender = sender.clone();
             let context = Box::new(TrayContext {
                 sender,
                 last_click: None,
@@ -298,6 +300,16 @@ mod windows_impl {
                     return Err(AppError::platform_failed("Tray window creation failed"));
                 }
             };
+            let mut hotkey = WindowsGlobalHotkey::new();
+            if let Err(error) = hotkey.register_default() {
+                let _ = DestroyWindow(window);
+                let _ = ready.send(Err(AppError::platform_failed(format!(
+                    "Register Alt+Space launcher hotkey: {error}"
+                ))));
+                return Err(AppError::platform_failed(
+                    "Could not register Alt+Space launcher hotkey",
+                ));
+            }
             let mut data = NOTIFYICONDATAW {
                 cbSize: u32::try_from(size_of::<NOTIFYICONDATAW>()).unwrap_or(u32::MAX),
                 hWnd: window,
@@ -323,6 +335,14 @@ mod windows_impl {
             let _ = ready.send(Ok(thread_id));
             let mut message = MSG::default();
             while GetMessageW(&raw mut message, None, 0, 0).as_bool() {
+                if message.message == WM_HOTKEY
+                    && message.wParam.0
+                        == usize::try_from(WindowsGlobalHotkey::DEFAULT_HOTKEY_ID)
+                            .unwrap_or_default()
+                {
+                    let _ = hotkey_sender.send(TrayEvent::ToggleVisibility);
+                    continue;
+                }
                 let _ = TranslateMessage(&raw const message);
                 DispatchMessageW(&raw const message);
             }

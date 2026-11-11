@@ -39,7 +39,7 @@ to `PATH`.
 | Enter | Launch the selected result |
 | Esc | Hide the launcher without quitting |
 | Ctrl+1 through Ctrl+9 | Launch the matching visible result |
-| Alt+Space | Configured default launcher hotkey |
+| Alt+Space | Toggle launcher visibility |
 
 ## Development setup
 
