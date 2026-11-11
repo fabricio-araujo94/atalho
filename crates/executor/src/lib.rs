@@ -215,7 +215,7 @@ mod windows_process {
         path: &Path,
         arguments: Option<&str>,
         requires_admin: bool,
-    ) -> windows::core::Result<()> {
+    ) -> std::result::Result<(), String> {
         let path_wide = wide(path.as_os_str());
         let args_wide = arguments.map(|arguments| wide(OsStr::new(arguments)));
         let verb = if requires_admin {
@@ -236,8 +236,26 @@ mod windows_process {
                 SW_SHOWNORMAL,
             )
         };
-        if (result.0 as usize) <= 32 {
-            Err(windows::core::Error::from_win32())
+        let error_code = result.0 as usize;
+        if error_code <= 32 {
+            let description = match error_code {
+                0 => "out of memory or resources",
+                2 => "file not found",
+                3 => "path not found",
+                5 => "access denied",
+                8 => "out of memory",
+                26 => "sharing violation",
+                27 => "incomplete file association",
+                28 => "DDE timeout",
+                29 => "DDE transaction failed",
+                30 => "DDE is busy",
+                31 => "no application is associated with this file type",
+                32 => "required DLL not found",
+                _ => "unknown shell execution error",
+            };
+            Err(format!(
+                "ShellExecuteW returned {error_code}: {description}"
+            ))
         } else {
             Ok(())
         }
