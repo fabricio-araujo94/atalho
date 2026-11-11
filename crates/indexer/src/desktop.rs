@@ -65,7 +65,7 @@ impl DesktopIndexer {
     }
 }
 
-/// Recursively scans a desktop directory for `.lnk` shortcut files using async I/O.
+/// Scans the top level of a desktop directory for `.lnk` shortcut files using async I/O.
 async fn collect_desktop_shortcuts(
     dir: &Path,
     out: &mut Vec<PathBuf>,
