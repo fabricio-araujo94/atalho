@@ -4,7 +4,7 @@ use core::{
     AppConfig, AppEntry, AppError, CacheMetadata, Config, History, IndexCache, Persistence, Result,
 };
 use std::collections::HashMap;
-use std::future::Future;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 #[cfg(any(test, feature = "test-utils"))]
@@ -250,33 +250,6 @@ impl FilePersistence {
             .await
             .map_err(|error| path_error(&path, error))
     }
-
-    fn run_config_io<T, F, Fut>(&self, operation: F) -> Result<T>
-    where
-        T: Send + 'static,
-        F: FnOnce(PathBuf) -> Fut + Send + 'static,
-        Fut: Future<Output = Result<T>> + Send + 'static,
-    {
-        let root = self.root.clone();
-        let worker = std::thread::Builder::new()
-            .name("persistence-config-io".to_owned())
-            .spawn(move || {
-                let runtime = tokio::runtime::Builder::new_current_thread()
-                    .enable_all()
-                    .build()
-                    .map_err(|error| {
-                        AppError::io_failed(format!(
-                            "{}: create config I/O runtime: {error}",
-                            root.display()
-                        ))
-                    })?;
-                runtime.block_on(operation(root))
-            })
-            .map_err(|error| AppError::io_failed(format!("start config I/O thread: {error}")))?;
-        worker
-            .join()
-            .map_err(|_| AppError::io_failed("config I/O thread panicked"))?
-    }
 }
 
 #[async_trait::async_trait]
@@ -395,21 +368,19 @@ impl Config for FilePersistence {
             .config_lock
             .lock()
             .map_err(|error| AppError::io_failed(format!("config lock: {error}")))?;
-        self.run_config_io(|root| async move {
-            let path = root.join(CONFIG_FILE);
-            let bytes = match tokio::fs::read(&path).await {
-                Ok(bytes) => bytes,
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                    return Ok(AppConfig::default());
-                }
-                Err(error) => return Err(path_error(&path, error)),
-            };
-            let contents = String::from_utf8(bytes).map_err(|error| {
-                AppError::io_failed(format!("{}: config is not UTF-8: {error}", path.display()))
-            })?;
-            toml::from_str(&contents).map_err(|error| {
-                AppError::io_failed(format!("{}: parse TOML: {error}", path.display()))
-            })
+        let path = self.file_path(CONFIG_FILE);
+        let bytes = match std::fs::read(&path) {
+            Ok(bytes) => bytes,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(AppConfig::default());
+            }
+            Err(error) => return Err(path_error(&path, error)),
+        };
+        let contents = String::from_utf8(bytes).map_err(|error| {
+            AppError::io_failed(format!("{}: config is not UTF-8: {error}", path.display()))
+        })?;
+        toml::from_str(&contents).map_err(|error| {
+            AppError::io_failed(format!("{}: parse TOML: {error}", path.display()))
         })
     }
 
@@ -424,9 +395,7 @@ impl Config for FilePersistence {
                 self.file_path(CONFIG_FILE).display()
             ))
         })?;
-        self.run_config_io(move |root| async move {
-            atomic_write(&root.join(CONFIG_FILE), serialized.as_bytes()).await
-        })
+        atomic_write_sync(&self.file_path(CONFIG_FILE), serialized.as_bytes())
     }
 }
 
@@ -583,6 +552,53 @@ async fn atomic_write(path: &Path, contents: &[u8]) -> Result<()> {
         return Err(cleanup_temp_after_rename(path, &temporary_path, error).await);
     }
     Ok(())
+}
+
+fn atomic_write_sync(path: &Path, contents: &[u8]) -> Result<()> {
+    let parent = path.parent().ok_or_else(|| {
+        AppError::io_failed(format!(
+            "{}: target has no parent directory",
+            path.display()
+        ))
+    })?;
+    std::fs::create_dir_all(parent).map_err(|error| path_error(parent, error))?;
+    let mut temporary_name = path
+        .file_name()
+        .ok_or_else(|| AppError::io_failed(format!("{}: target has no file name", path.display())))?
+        .to_os_string();
+    temporary_name.push(format!(".{}.tmp", Uuid::new_v4()));
+    let temporary_path = parent.join(temporary_name);
+    let mut temporary_file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temporary_path)
+        .map_err(|error| path_error(&temporary_path, error))?;
+    if let Err(error) = temporary_file.write_all(contents) {
+        drop(temporary_file);
+        return Err(cleanup_sync_temp(&temporary_path, &temporary_path, error));
+    }
+    if let Err(error) = temporary_file.sync_all() {
+        drop(temporary_file);
+        return Err(cleanup_sync_temp(&temporary_path, &temporary_path, error));
+    }
+    drop(temporary_file);
+    std::fs::rename(&temporary_path, path)
+        .map_err(|error| cleanup_sync_temp(path, &temporary_path, error))
+}
+
+fn cleanup_sync_temp(target: &Path, temporary_path: &Path, error: std::io::Error) -> AppError {
+    let message = error.to_string();
+    match std::fs::remove_file(temporary_path) {
+        Ok(()) => path_error(target, error),
+        Err(cleanup_error) if cleanup_error.kind() == std::io::ErrorKind::NotFound => {
+            path_error(target, error)
+        }
+        Err(cleanup_error) => AppError::io_failed(format!(
+            "{}: {message}; cleanup of {} also failed: {cleanup_error}",
+            target.display(),
+            temporary_path.display()
+        )),
+    }
 }
 
 async fn cleanup_temp_after_write(target: &Path, error: std::io::Error) -> AppError {
