@@ -232,7 +232,7 @@ mod windows_impl {
         ///
         /// # Errors
         /// Returns an error if the tray thread cannot be stopped or cleanup fails.
-        pub const fn shutdown(&mut self) -> Result<()> {
+        pub fn shutdown(&mut self) -> Result<()> {
             if let Some(thread) = self.thread.take() {
                 let post_result = unsafe {
                     PostThreadMessageW(
@@ -495,7 +495,7 @@ mod windows_impl {
             AppError::platform_failed(format!("Initialize COM for auto-start shortcut: {error}"))
         })?;
         let _com_guard = ComGuard;
-        let result = unsafe {
+        unsafe {
             let link: IShellLinkW = CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER)
                 .map_err(|error| {
                     AppError::platform_failed(format!("Create auto-start shell link: {error}"))
@@ -519,8 +519,7 @@ mod windows_impl {
                         startup.display()
                     ))
                 })
-        };
-        result
+        }
     }
 
     fn wide(value: &str) -> Vec<u16> {
