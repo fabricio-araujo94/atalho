@@ -3,6 +3,8 @@
 //! Composition root that owns the launcher runtime, tray, persistence, and
 //! orderly shutdown sequence.
 
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 use app::search::SearchService;
 use core::{AppConfig, Config, Executor, GlobalHotkey, History, Matcher, Persistence};
 use executor::SystemExecutor;
