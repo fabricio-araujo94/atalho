@@ -219,7 +219,7 @@ impl LauncherState {
             }
             Message::SelectionUp => self.select_previous(),
             Message::SelectionDown => self.select_next(),
-            Message::ExecuteSelected => self.execute_selected(),
+            Message::ExecuteSelected => return self.execute_selected(),
             Message::ToggleVisibility => return self.toggle_visibility(),
             Message::ThemeChanged(theme) => self.theme = theme,
             Message::ClearQuery => {
@@ -237,7 +237,7 @@ impl LauncherState {
                     self.selected_index = index;
                 }
             }
-            Message::ExecuteResult(index) => self.execute_at(index),
+            Message::ExecuteResult(index) => return self.execute_at(index),
             Message::OpenSettings => {
                 self.settings_open = true;
                 self.is_visible = true;
@@ -320,16 +320,25 @@ impl LauncherState {
         }
     }
 
-    fn execute_selected(&mut self) {
-        self.execute_at(self.selected_index);
+    fn execute_selected(&mut self) -> Task<Message> {
+        self.execute_at(self.selected_index)
     }
 
-    fn execute_at(&mut self, index: usize) {
-        if let Some(entry) = self.results.get(index).map(|result| result.entry.clone())
-            && let Err(error) = self.execute_sender.send(entry)
-        {
-            self.search_error = Some(format!("Application executor unavailable: {error}"));
+    fn execute_at(&mut self, index: usize) -> Task<Message> {
+        if let Some(entry) = self.results.get(index).map(|result| result.entry.clone()) {
+            return match self.execute_sender.send(entry) {
+                Ok(()) => {
+                    self.is_visible = false;
+                    window::latest()
+                        .then(|id| id.map_or_else(Task::none, |id| window::minimize(id, true)))
+                }
+                Err(error) => {
+                    self.search_error = Some(format!("Application executor unavailable: {error}"));
+                    Task::none()
+                }
+            };
         }
+        Task::none()
     }
 }
 
@@ -797,6 +806,64 @@ mod tests {
         assert_eq!(state.selected_index, 1);
         let _task = state.update(Message::SelectionDown);
         assert_eq!(state.selected_index, 0);
+    }
+
+    #[test]
+    fn executing_result_hides_launcher_after_dispatch() {
+        let (execute_sender, mut execute_receiver) = mpsc::unbounded_channel();
+        let (query_sender, _) = mpsc::unbounded_channel();
+        let (event_sender, event_receiver) = broadcast::channel(4);
+        let mut state = LauncherState::new(
+            query_sender,
+            execute_sender,
+            SearchEventSource::new(event_receiver),
+            UiCommandSource::new(mpsc::unbounded_channel().1),
+            mpsc::unbounded_channel().0,
+            8,
+            false,
+        );
+        state.results = vec![ScoredMatch::new(
+            AppEntry::new("Editor", "editor.exe", AppSource::StartMenu),
+            10,
+            Vec::new(),
+        )];
+
+        let _task = state.update(Message::ExecuteSelected);
+
+        assert!(!state.is_visible);
+        assert_eq!(
+            execute_receiver.try_recv().ok().map(|entry| entry.name),
+            Some("Editor".to_owned())
+        );
+        drop(event_sender);
+    }
+
+    #[test]
+    fn failed_execution_dispatch_keeps_launcher_visible() {
+        let (execute_sender, execute_receiver) = mpsc::unbounded_channel();
+        drop(execute_receiver);
+        let (query_sender, _) = mpsc::unbounded_channel();
+        let (event_sender, event_receiver) = broadcast::channel(4);
+        let mut state = LauncherState::new(
+            query_sender,
+            execute_sender,
+            SearchEventSource::new(event_receiver),
+            UiCommandSource::new(mpsc::unbounded_channel().1),
+            mpsc::unbounded_channel().0,
+            8,
+            false,
+        );
+        state.results = vec![ScoredMatch::new(
+            AppEntry::new("Editor", "editor.exe", AppSource::StartMenu),
+            10,
+            Vec::new(),
+        )];
+
+        let _task = state.update(Message::ExecuteSelected);
+
+        assert!(state.is_visible);
+        assert!(state.search_error.is_some());
+        drop(event_sender);
     }
 
     #[test]
