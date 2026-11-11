@@ -141,6 +141,9 @@ mod windows_impl {
                                     "Wait for second-instance signal failed",
                                 ));
                             }
+                            if stop.load(Ordering::Acquire) {
+                                break;
+                            }
                             if result.0 == 0 && sender.send(TrayEvent::Show).is_err() {
                                 break;
                             }
