@@ -184,7 +184,9 @@ impl FilePersistence {
             if bytes.len() % HISTORY_RECORD_SIZE != 0 {
                 truncate_partial_history_file(&path).await?;
             }
-            let bytes = tokio::fs::read(&path).await.map_err(|error| path_error(&path, error))?;
+            let bytes = tokio::fs::read(&path)
+                .await
+                .map_err(|error| path_error(&path, error))?;
             let (chunks, _) = bytes.as_chunks::<HISTORY_RECORD_SIZE>();
             records.extend(chunks.iter().map(|chunk| {
                 let id = Uuid::from_bytes(chunk[8..].try_into().unwrap_or([0; 16]));
@@ -474,9 +476,13 @@ async fn truncate_partial_history_file(path: &Path) -> Result<()> {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
         Err(error) => return Err(path_error(path, error)),
     };
-    let remainder = len % u64::try_from(HISTORY_RECORD_SIZE).map_err(|error| {
-        AppError::io_failed(format!("{}: invalid history record size: {error}", path.display()))
-    })?;
+    let remainder = len
+        % u64::try_from(HISTORY_RECORD_SIZE).map_err(|error| {
+            AppError::io_failed(format!(
+                "{}: invalid history record size: {error}",
+                path.display()
+            ))
+        })?;
     if remainder == 0 {
         return Ok(());
     }
@@ -799,13 +805,19 @@ mod tests {
 
         assert!(tokio::fs::create_dir_all(&directory).await.is_ok());
         assert!(
-            tokio::fs::write(&history_path, [valid_record.as_slice(), invalid_tail.as_slice()].concat())
-                .await
-                .is_ok()
+            tokio::fs::write(
+                &history_path,
+                [valid_record.as_slice(), invalid_tail.as_slice()].concat()
+            )
+            .await
+            .is_ok()
         );
 
         assert!(History::record(&persistence, latest).await.is_ok());
-        assert_eq!(History::recent(&persistence, 2).await.ok(), Some(vec![latest, existing]));
+        assert_eq!(
+            History::recent(&persistence, 2).await.ok(),
+            Some(vec![latest, existing])
+        );
         let _ = tokio::fs::remove_dir_all(directory).await;
     }
 
