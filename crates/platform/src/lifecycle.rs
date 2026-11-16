@@ -52,8 +52,8 @@ mod windows_impl {
     };
     use windows::core::{Interface, PCWSTR};
 
-    const MUTEX_NAME: &str = "Global\\Atalho.SingleInstance";
-    const SHOW_EVENT_NAME: &str = "Global\\Atalho.Show";
+    const MUTEX_NAME: &str = "Local\\Atalho.SingleInstance";
+    const SHOW_EVENT_NAME: &str = "Local\\Atalho.Show";
     const TRAY_CLASS: &str = "AtalhoTrayWindow";
     const TRAY_MESSAGE: u32 = 0x8000 + 41;
     const WM_NCCREATE: u32 = 0x0081;
