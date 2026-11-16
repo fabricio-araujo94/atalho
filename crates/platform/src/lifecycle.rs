@@ -47,8 +47,9 @@ mod windows_impl {
         AppendMenuW, CREATESTRUCTW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu,
         DestroyWindow, DispatchMessageW, GWLP_USERDATA, GetCursorPos, GetMessageW,
         GetWindowLongPtrW, IDI_APPLICATION, LoadIconW, MF_STRING, MSG, PostMessageW,
-        PostThreadMessageW, RegisterClassW, SetForegroundWindow, SetWindowLongPtrW, TPM_NONOTIFY,
-        TPM_RETURNCMD, TrackPopupMenu, TranslateMessage, WM_HOTKEY, WNDCLASSW, WS_OVERLAPPED,
+        PostQuitMessage, PostThreadMessageW, RegisterClassW, SetForegroundWindow,
+        SetWindowLongPtrW, TPM_NONOTIFY, TPM_RETURNCMD, TrackPopupMenu, TranslateMessage,
+        WM_HOTKEY, WNDCLASSW, WS_OVERLAPPED,
     };
     use windows::core::{Interface, PCWSTR};
 
@@ -58,6 +59,7 @@ mod windows_impl {
     const TRAY_MESSAGE: u32 = 0x8000 + 41;
     const WM_NCCREATE: u32 = 0x0081;
     const WM_NCDESTROY: u32 = 0x0082;
+    const WM_CLOSE: u32 = 0x0010;
     const WM_CONTEXTMENU: u32 = 0x007B;
     const WM_LBUTTONUP: u32 = 0x0202;
     const WM_RBUTTONUP: u32 = 0x0205;
@@ -191,6 +193,7 @@ mod windows_impl {
     /// Runs the tray window and Win32 message pump on its own thread.
     pub struct TrayController {
         thread_id: u32,
+        window: isize,
         thread: Option<JoinHandle<Result<()>>>,
     }
 
@@ -217,8 +220,9 @@ mod windows_impl {
                 }
             };
             match readiness {
-                Ok(thread_id) => Ok(Self {
+                Ok((thread_id, window)) => Ok(Self {
                     thread_id,
+                    window,
                     thread: Some(thread),
                 }),
                 Err(error) => {
@@ -235,18 +239,30 @@ mod windows_impl {
         pub fn shutdown(&mut self) -> Result<()> {
             if let Some(thread) = self.thread.take() {
                 let post_result = unsafe {
-                    PostThreadMessageW(
-                        self.thread_id,
-                        WM_QUIT,
+                    PostMessageW(
+                        HWND(self.window as _),
+                        WM_CLOSE,
                         WPARAM::default(),
                         LPARAM::default(),
                     )
                 };
+                if let Err(window_error) = post_result {
+                    unsafe {
+                        PostThreadMessageW(
+                            self.thread_id,
+                            WM_QUIT,
+                            WPARAM::default(),
+                            LPARAM::default(),
+                        )
+                    }
+                    .map_err(|thread_error| {
+                        AppError::platform_failed(format!(
+                            "Stop system tray thread (window close failed: {window_error}; thread quit failed: {thread_error})"
+                        ))
+                    })?;
+                }
                 let join_result = thread.join().map_err(|_| {
                     AppError::platform_failed("System tray thread panicked during shutdown")
-                })?;
-                post_result.map_err(|error| {
-                    AppError::platform_failed(format!("Stop system tray thread: {error}"))
                 })?;
                 join_result?;
             }
@@ -260,7 +276,10 @@ mod windows_impl {
         }
     }
 
-    fn tray_thread(sender: Sender<TrayEvent>, ready: &SyncSender<Result<u32>>) -> Result<()> {
+    fn tray_thread(
+        sender: Sender<TrayEvent>,
+        ready: &SyncSender<Result<(u32, isize)>>,
+    ) -> Result<()> {
         unsafe {
             let thread_id = windows::Win32::System::Threading::GetCurrentThreadId();
             let class_name = wide(TRAY_CLASS);
@@ -332,7 +351,7 @@ mod windows_impl {
                     "Could not install the launcher tray icon",
                 ));
             }
-            let _ = ready.send(Ok(thread_id));
+            let _ = ready.send(Ok((thread_id, window.0 as isize)));
             let mut message = MSG::default();
             while GetMessageW(&raw mut message, None, 0, 0).as_bool() {
                 if message.message == WM_HOTKEY
@@ -376,6 +395,10 @@ mod windows_impl {
             let _ =
                 unsafe { SetWindowLongPtrW(window, GWLP_USERDATA, create.lpCreateParams as isize) };
             return unsafe { DefWindowProcW(window, message, wparam, lparam) };
+        }
+        if message == WM_CLOSE {
+            unsafe { PostQuitMessage(0) };
+            return windows::Win32::Foundation::LRESULT(0);
         }
         let context_ptr = unsafe { GetWindowLongPtrW(window, GWLP_USERDATA) } as *mut TrayContext;
         if message == WM_NCDESTROY {
