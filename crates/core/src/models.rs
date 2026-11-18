@@ -94,11 +94,14 @@ impl AppEntry {
     ) -> Self {
         let name_str = name.into();
         let normalized = normalize_name(&name_str);
+        let executable_path = executable_path.into();
+        let path_key = executable_path.to_string_lossy();
+        let id = Uuid::new_v5(&Uuid::NAMESPACE_DNS, path_key.as_bytes());
         Self {
-            id: Uuid::new_v4(),
+            id,
             name: name_str,
             normalized_name: normalized,
-            executable_path: executable_path.into(),
+            executable_path,
             arguments: None,
             icon_path: None,
             source,
@@ -307,6 +310,14 @@ mod tests {
         assert_eq!(app.source, AppSource::Path);
         assert_eq!(app.description.as_deref(), Some("Code editing redefined"));
         assert_eq!(app.keywords, vec!["editor", "development"]);
+    }
+
+    #[test]
+    fn test_app_entry_id_is_stable_by_executable_path() {
+        let first = AppEntry::new("Editor", "/opt/editor/bin/editor", AppSource::Path);
+        let second = AppEntry::new("Editor", "/opt/editor/bin/editor", AppSource::StartMenu);
+
+        assert_eq!(first.id, second.id);
     }
 
     #[test]
