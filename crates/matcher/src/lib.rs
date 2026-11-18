@@ -41,6 +41,7 @@ struct MatchScratch {
     normalized_to_original: Vec<usize>,
     chars_target: Vec<char>,
     chars_query: Vec<char>,
+    chars_query_normalized: Vec<char>,
     chars_orig: Vec<char>,
     match_positions: Vec<usize>,
 }
@@ -52,6 +53,7 @@ impl MatchScratch {
             normalized_to_original: Vec::new(),
             chars_target: Vec::new(),
             chars_query: Vec::new(),
+            chars_query_normalized: Vec::new(),
             chars_orig: Vec::new(),
             match_positions: Vec::new(),
         }
@@ -62,6 +64,7 @@ impl MatchScratch {
         self.normalized_to_original.clear();
         self.chars_target.clear();
         self.chars_query.clear();
+        self.chars_query_normalized.clear();
         self.chars_orig.clear();
         self.match_positions.clear();
     }
@@ -106,9 +109,12 @@ impl FuzzyMatcher {
             scratch.clear();
 
             scratch.chars_query.extend(query.chars());
+            scratch
+                .chars_query_normalized
+                .extend(core::normalize_name(query).chars());
             scratch.chars_target.extend(normalized_name.chars());
 
-            let query_len = scratch.chars_query.len();
+            let query_len = scratch.chars_query_normalized.len();
             let target_len = scratch.chars_target.len();
 
             if query_len > target_len {
@@ -118,7 +124,7 @@ impl FuzzyMatcher {
             // O(n * m) sequential scan finding earliest matching positions
             let mut target_idx = 0;
             for q_idx in 0..query_len {
-                let q_char = scratch.chars_query[q_idx];
+                let q_char = scratch.chars_query_normalized[q_idx];
                 let mut found = false;
                 while target_idx < target_len {
                     let t_char = scratch.chars_target[target_idx];
@@ -184,7 +190,8 @@ impl FuzzyMatcher {
                 // 4. Exact case match bonus
                 if original_idx < orig_len && pos_in_query < query_len {
                     let orig_char = scratch.chars_orig[original_idx];
-                    let q_raw_char = query.chars().nth(pos_in_query).unwrap_or(orig_char);
+                    let q_raw_char =
+                        scratch.chars_query[pos_in_query.min(scratch.chars_query.len() - 1)];
                     if orig_char == q_raw_char {
                         score += BONUS_CASE_EXACT;
                     }
@@ -264,15 +271,13 @@ impl Matcher for FuzzyMatcher {
             return Some(matches);
         }
 
-        let normalized_query = core::normalize_name(trimmed_query);
-
         let mut matches = Vec::new();
         for entry in entries {
             if token.is_cancelled() {
                 return None;
             }
             if let Some((score, match_positions)) =
-                Self::score_candidate(&normalized_query, &entry.name, &entry.normalized_name)
+                Self::score_candidate(trimmed_query, &entry.name, &entry.normalized_name)
             {
                 matches.push(ScoredMatch::new(entry.clone(), score, match_positions));
             }
@@ -304,8 +309,6 @@ pub fn parallel_search(entries: &[AppEntry], query: &str, num_threads: usize) ->
             .collect();
     }
 
-    let normalized_query = core::normalize_name(trimmed_query);
-
     let pool = rayon::ThreadPoolBuilder::new()
         .num_threads(num_threads.max(1))
         .build();
@@ -314,12 +317,8 @@ pub fn parallel_search(entries: &[AppEntry], query: &str, num_threads: usize) ->
         let mut results: Vec<ScoredMatch> = entries
             .par_iter()
             .filter_map(|entry| {
-                FuzzyMatcher::score_candidate(
-                    &normalized_query,
-                    &entry.name,
-                    &entry.normalized_name,
-                )
-                .map(|(score, positions)| ScoredMatch::new(entry.clone(), score, positions))
+                FuzzyMatcher::score_candidate(trimmed_query, &entry.name, &entry.normalized_name)
+                    .map(|(score, positions)| ScoredMatch::new(entry.clone(), score, positions))
             })
             .collect();
 
@@ -422,6 +421,20 @@ mod tests {
 
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].entry.name, "Configurações");
+    }
+
+    #[test]
+    fn test_exact_case_bonus_uses_original_query() {
+        let upper_query = FuzzyMatcher::score_candidate("Calc", "Calculator", "calculator");
+        let lower_query = FuzzyMatcher::score_candidate("calc", "Calculator", "calculator");
+
+        let Some((upper_score, _)) = upper_query else {
+            panic!("uppercase query should match");
+        };
+        let Some((lower_score, _)) = lower_query else {
+            panic!("lowercase query should match");
+        };
+        assert!(upper_score > lower_score);
     }
 
     #[test]
