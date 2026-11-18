@@ -11,7 +11,7 @@ mod windows_impl {
         CoUninitialize, IPersistFile, STGM_READ,
     };
     use windows::Win32::UI::Shell::{
-        IShellLinkDataList, IShellLinkW, SLDF_RUNAS_USER, SLGP_RAWPATH, SLR_NO_UI, ShellLink,
+        IShellLinkDataList, IShellLinkW, SLDF_RUNAS_USER, SLR_NO_UI, ShellLink,
     };
     use windows::core::{Interface, PCWSTR};
 
@@ -91,7 +91,7 @@ mod windows_impl {
         let mut target_buf = [0u16; 1024];
         // SAFETY: Querying target path into preallocated buffer.
         unsafe {
-            shell_link.GetPath(&mut target_buf, std::ptr::null_mut(), SLGP_RAWPATH.0 as u32)?;
+            shell_link.GetPath(&mut target_buf, std::ptr::null_mut(), 0)?;
         }
         let target_len = target_buf.iter().position(|&c| c == 0).unwrap_or(0);
         if target_len == 0 {
