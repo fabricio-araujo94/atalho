@@ -10,7 +10,9 @@ use iced::{
     Alignment, Color, Element, Event, Fill, Length, Subscription, Task, Theme as IcedTheme, event,
     window,
 };
+use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::{Mutex, broadcast, mpsc};
@@ -74,6 +76,8 @@ pub enum Message {
     QueryChanged(String),
     /// Search service returned a result set.
     ResultsReceived(Vec<ScoredMatch>, usize, u64),
+    /// An application icon finished loading.
+    IconLoaded(PathBuf, Option<core::Image>),
     /// Search service started processing the latest query.
     SearchLoading,
     /// Search service reported an error.
@@ -149,6 +153,8 @@ pub struct LauncherState {
     pub settings_open: bool,
     /// Whether the launcher starts at sign-in.
     pub auto_start: bool,
+    icons: HashMap<PathBuf, core::Image>,
+    loading_icons: HashSet<PathBuf>,
     query_sender: mpsc::UnboundedSender<SearchRequest>,
     execute_sender: mpsc::UnboundedSender<AppEntry>,
     auto_start_sender: mpsc::UnboundedSender<bool>,
@@ -188,6 +194,8 @@ impl LauncherState {
             search_error: None,
             settings_open: false,
             auto_start,
+            icons: HashMap::new(),
+            loading_icons: HashSet::new(),
             query_sender,
             execute_sender,
             auto_start_sender,
@@ -197,6 +205,7 @@ impl LauncherState {
     }
 
     /// Updates state and sends side-effectful work through async channels.
+    #[allow(clippy::too_many_lines)]
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::QueryChanged(query) => {
@@ -215,6 +224,27 @@ impl LauncherState {
                 self.elapsed_us = elapsed_us;
                 self.search_error = None;
                 self.selected_index = 0;
+                let mut tasks = Vec::new();
+                for scored in &self.results {
+                    let entry = &scored.entry;
+                    let icon_path = entry
+                        .icon_path
+                        .clone()
+                        .unwrap_or_else(|| entry.executable_path.clone());
+                    if self.icons.contains_key(&icon_path)
+                        || !self.loading_icons.insert(icon_path.clone())
+                    {
+                        continue;
+                    }
+                    let task_path = icon_path.clone();
+                    tasks.push(Task::perform(
+                        async move {
+                            let image = platform::icon_for(&task_path).await.ok();
+                            (task_path, image)
+                        },
+                        |(path, image)| Message::IconLoaded(path, image),
+                    ));
+                }
                 let visible_rows = u16::try_from(self.results.len())
                     .unwrap_or(u16::MAX)
                     .min(style::MAX_VISIBLE_RESULTS);
@@ -223,8 +253,16 @@ impl LauncherState {
                     style::RESULT_ROW_HEIGHT
                         .mul_add(f32::from(visible_rows), style::INITIAL_WINDOW_HEIGHT),
                 );
-                return window::latest()
+                let resize_task = window::latest()
                     .then(move |id| id.map_or_else(Task::none, |id| window::resize(id, new_size)));
+                tasks.push(resize_task);
+                return Task::batch(tasks);
+            }
+            Message::IconLoaded(path, image) => {
+                self.loading_icons.remove(&path);
+                if let Some(image) = image {
+                    self.icons.insert(path, image);
+                }
             }
             Message::SearchLoading | Message::ToastExpired => self.search_error = None,
             Message::SearchFailed(error) => {
@@ -541,10 +579,30 @@ fn results_list(state: &LauncherState) -> Element<'_, Message> {
     for (index, scored) in state.results.iter().take(state.max_results).enumerate() {
         let selected = index == state.selected_index;
         let entry = &scored.entry;
+        let icon_path = entry
+            .icon_path
+            .clone()
+            .unwrap_or_else(|| entry.executable_path.clone());
+        let icon: Element<'_, Message> = state.icons.get(&icon_path).map_or_else(
+            || {
+                text(style::APP_ICON)
+                    .size(style::ICON_SIZE)
+                    .width(style::ICON_COLUMN_WIDTH)
+                    .into()
+            },
+            |image| {
+                iced::widget::image(iced::widget::image::Handle::from_rgba(
+                    image.width,
+                    image.height,
+                    image.rgba.clone(),
+                ))
+                .width(style::ICON_SIZE)
+                .height(style::ICON_SIZE)
+                .into()
+            },
+        );
         let row_contents = row![
-            text(style::APP_ICON)
-                .size(style::ICON_SIZE)
-                .width(style::ICON_COLUMN_WIDTH),
+            container(icon).width(style::ICON_COLUMN_WIDTH),
             text(&entry.name)
                 .size(style::RESULT_TEXT_SIZE)
                 .font(iced::Font {
