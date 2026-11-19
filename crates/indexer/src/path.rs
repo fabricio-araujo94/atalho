@@ -117,7 +117,7 @@ impl Indexer for PathIndexer {
                         continue;
                     }
 
-                    let canonical = tokio::fs::canonicalize(&path).await.unwrap_or(path);
+                    let canonical = dunce::canonicalize(&path).unwrap_or(path);
                     apps.push(AppEntry::new(file_stem, canonical, AppSource::Path));
                 }
             }

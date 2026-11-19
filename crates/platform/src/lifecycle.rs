@@ -409,6 +409,7 @@ mod windows_impl {
         }
         let context_ptr = unsafe { GetWindowLongPtrW(window, GWLP_USERDATA) } as *mut TrayContext;
         if message == WM_NCDESTROY {
+            let _ = unsafe { SetWindowLongPtrW(window, GWLP_USERDATA, 0) };
             if !context_ptr.is_null() {
                 unsafe { drop(Box::from_raw(context_ptr)) };
             }
