@@ -39,8 +39,7 @@ impl PathIndexer {
         }
 
         std::env::var_os("PATH")
-            .map(|var| std::env::split_paths(&var).filter(|p| p.is_dir()).collect())
-            .unwrap_or_default()
+            .map_or_default(|var| std::env::split_paths(&var).filter(|p| p.is_dir()).collect())
     }
 
     /// Checks if a file path has an executable extension matching the target platform.
