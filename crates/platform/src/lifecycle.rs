@@ -21,7 +21,7 @@ pub enum TrayEvent {
 mod windows_impl {
     use super::{AppError, Result, TrayEvent, mpsc};
     use crate::WindowsGlobalHotkey;
-    use core::{HotkeyModifiers, KeyCode};
+    use core::{GlobalHotkey, HotkeyModifiers, KeyCode};
     use std::ffi::OsStr;
     use std::mem::size_of;
     use std::os::windows::ffi::OsStrExt;
