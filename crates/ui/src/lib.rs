@@ -236,7 +236,7 @@ impl LauncherState {
                     {
                         continue;
                     }
-                    let task_path = icon_path.clone();
+                    let task_path = icon_path;
                     tasks.push(Task::perform(
                         async move {
                             let image = platform::icon_for(&task_path).await.ok();
