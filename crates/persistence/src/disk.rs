@@ -36,6 +36,7 @@ pub struct FilePersistence {
     cache_lock: AsyncMutex<()>,
     index_count: Mutex<Option<usize>>,
     history_lock: AsyncMutex<()>,
+    history_frequency: Mutex<Option<HashMap<Uuid, u32>>>,
     config_lock: Mutex<()>,
 }
 
@@ -68,6 +69,7 @@ impl FilePersistence {
             cache_lock: AsyncMutex::new(()),
             index_count: Mutex::new(None),
             history_lock: AsyncMutex::new(()),
+            history_frequency: Mutex::new(None),
             config_lock: Mutex::new(()),
         }
     }
@@ -305,7 +307,17 @@ impl IndexCache for FilePersistence {
 impl History for FilePersistence {
     async fn record(&self, entry_id: Uuid) -> Result<()> {
         let _guard = self.history_lock.lock().await;
-        self.record_history(entry_id).await
+        self.record_history(entry_id).await?;
+        let mut cache = self
+            .history_frequency
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(frequency) = cache.as_mut() {
+            let count = frequency.entry(entry_id).or_insert(0_u32);
+            *count = count.saturating_add(1);
+        }
+        drop(cache);
+        Ok(())
     }
 
     async fn recent(&self, limit: usize) -> Result<Vec<Uuid>> {
@@ -321,11 +333,23 @@ impl History for FilePersistence {
 
     async fn frequency(&self) -> Result<HashMap<Uuid, u32>> {
         let _guard = self.history_lock.lock().await;
+        let cached = self
+            .history_frequency
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        if let Some(frequency) = cached {
+            return Ok(frequency);
+        }
         let mut counts = HashMap::new();
         for record in self.history_records().await? {
             let count = counts.entry(record.id).or_insert(0_u32);
             *count = count.saturating_add(1);
         }
+        *self
+            .history_frequency
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(counts.clone());
         Ok(counts)
     }
 
@@ -758,6 +782,14 @@ mod tests {
                 .ok()
                 .and_then(|counts| counts.get(&first).copied()),
             Some(2)
+        );
+        assert!(History::record(&persistence, first).await.is_ok());
+        assert_eq!(
+            History::frequency(&persistence)
+                .await
+                .ok()
+                .and_then(|counts| counts.get(&first).copied()),
+            Some(3)
         );
         let _ = tokio::fs::remove_dir_all(directory).await;
     }
