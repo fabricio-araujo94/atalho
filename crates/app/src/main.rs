@@ -6,7 +6,10 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 use app::search::SearchService;
-use core::{AppConfig, Config, Executor, GlobalHotkey, History, Matcher, Persistence};
+use core::{
+    AppConfig, AppSource, Config, Executor, GlobalHotkey, History, HotkeyModifiers, KeyCode,
+    Matcher, Persistence,
+};
 use executor::SystemExecutor;
 use indexer::DefaultIndexer;
 use matcher::FuzzyMatcher;
@@ -26,8 +29,18 @@ fn main() -> core::Result<()> {
         return Ok(());
     };
 
+    #[cfg(windows)]
+    let persistence = Arc::new(FilePersistence::new()?);
+    #[cfg(not(windows))]
+    let persistence = Arc::new(InMemoryPersistence::new());
+    let app_persistence: Arc<dyn Persistence> = persistence.clone();
+    let history: Arc<dyn History> = persistence.clone();
+    let config_store: Arc<dyn Config> = persistence;
+    let config = config_store.load()?;
+    let (hotkey_modifiers, hotkey_key) = parse_hotkey(&config.hotkey);
+
     let (tray_event_sender, tray_event_receiver) = std_mpsc::channel();
-    let tray = TrayController::start(tray_event_sender.clone())?;
+    let tray = TrayController::start(tray_event_sender.clone(), hotkey_modifiers, hotkey_key)?;
     instance.listen_for_show(tray_event_sender)?;
 
     let (ui_command_sender, ui_command_receiver) = mpsc::unbounded_channel();
@@ -37,16 +50,7 @@ fn main() -> core::Result<()> {
     let platform = PlatformManager::new();
     println!("Platform detected: {:?}", platform.platform_kind());
 
-    #[cfg(windows)]
-    let persistence = Arc::new(FilePersistence::new()?);
-    #[cfg(not(windows))]
-    let persistence = Arc::new(InMemoryPersistence::new());
-    let app_persistence: Arc<dyn Persistence> = persistence.clone();
-    let history: Arc<dyn History> = persistence.clone();
-    let config_store: Arc<dyn Config> = persistence;
-    let config = config_store.load()?;
-
-    let indexer = default_indexer();
+    let indexer = default_indexer(&config);
     let matcher = Arc::new(FuzzyMatcher::new());
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -55,10 +59,11 @@ fn main() -> core::Result<()> {
             core::AppError::execution_failed(format!("Tokio startup failed: {error}"))
         })?;
     let search_service = Arc::new(
-        SearchService::new(
+        SearchService::with_debounce(
             indexer,
             Arc::clone(&matcher) as Arc<dyn Matcher>,
             Arc::clone(&app_persistence),
+            std::time::Duration::from_millis(config.debounce_ms),
         )
         .with_history(Arc::clone(&history)),
     );
@@ -103,6 +108,7 @@ fn main() -> core::Result<()> {
         auto_start_sender.clone(),
         config.max_results,
         config.auto_start,
+        config.theme,
     )
     .map_err(|error| core::AppError::execution_failed(format!("Iced UI failed: {error}")));
 
@@ -238,8 +244,42 @@ fn start_tray_event_bridge(
         })
 }
 
-fn default_indexer() -> Arc<DefaultIndexer> {
-    Arc::new(DefaultIndexer::new())
+fn default_indexer(config: &AppConfig) -> Arc<DefaultIndexer> {
+    let sources: Vec<AppSource> = config
+        .index_sources
+        .iter()
+        .filter(|toggle| toggle.enabled)
+        .map(|toggle| toggle.source)
+        .collect();
+    Arc::new(DefaultIndexer::from_sources(&sources))
+}
+
+fn parse_hotkey(value: &str) -> (HotkeyModifiers, KeyCode) {
+    let mut modifiers = HotkeyModifiers::NONE;
+    let mut key = None;
+    for part in value.split('+').map(str::trim) {
+        match part.to_ascii_lowercase().as_str() {
+            "alt" => modifiers.alt = true,
+            "ctrl" | "control" => modifiers.ctrl = true,
+            "shift" => modifiers.shift = true,
+            "win" | "super" | "windows" => modifiers.win = true,
+            "space" => key = Some(KeyCode::Space),
+            "enter" | "return" => key = Some(KeyCode::Return),
+            "escape" | "esc" => key = Some(KeyCode::Escape),
+            "tab" => key = Some(KeyCode::Tab),
+            "backspace" => key = Some(KeyCode::Backspace),
+            f if f.len() > 1 && f.starts_with('f') => {
+                if let Ok(number) = f[1..].parse::<u8>()
+                    && (1..=24).contains(&number)
+                {
+                    key = Some(KeyCode::F(number));
+                }
+            }
+            _ if part.chars().count() == 1 => key = part.chars().next().map(KeyCode::Char),
+            _ => {}
+        }
+    }
+    (modifiers, key.unwrap_or(KeyCode::Space))
 }
 
 fn start_auto_start_worker(

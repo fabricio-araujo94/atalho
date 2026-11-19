@@ -40,6 +40,15 @@ impl DefaultIndexer {
             preloaded_apps: apps,
         }
     }
+
+    /// Creates an indexer limited to the requested application sources.
+    #[must_use]
+    pub fn from_sources(sources: &[core::AppSource]) -> Self {
+        Self {
+            composite: CompositeIndexer::from_sources(sources),
+            preloaded_apps: Vec::new(),
+        }
+    }
 }
 
 #[async_trait::async_trait]

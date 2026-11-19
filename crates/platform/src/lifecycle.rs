@@ -21,6 +21,7 @@ pub enum TrayEvent {
 mod windows_impl {
     use super::{AppError, Result, TrayEvent, mpsc};
     use crate::WindowsGlobalHotkey;
+    use core::{HotkeyModifiers, KeyCode};
     use std::ffi::OsStr;
     use std::mem::size_of;
     use std::os::windows::ffi::OsStrExt;
@@ -202,11 +203,15 @@ mod windows_impl {
         ///
         /// # Errors
         /// Returns an error if the tray thread or notification icon cannot be initialized.
-        pub fn start(sender: Sender<TrayEvent>) -> Result<Self> {
+        pub fn start(
+            sender: Sender<TrayEvent>,
+            hotkey_modifiers: HotkeyModifiers,
+            hotkey_key: KeyCode,
+        ) -> Result<Self> {
             let (ready_sender, ready_receiver) = mpsc::sync_channel(1);
             let thread = thread::Builder::new()
                 .name("launcher-system-tray".to_owned())
-                .spawn(move || tray_thread(sender, &ready_sender))
+                .spawn(move || tray_thread(sender, &ready_sender, hotkey_modifiers, hotkey_key))
                 .map_err(|error| {
                     AppError::platform_failed(format!("Start system tray thread: {error}"))
                 })?;
@@ -279,6 +284,8 @@ mod windows_impl {
     fn tray_thread(
         sender: Sender<TrayEvent>,
         ready: &SyncSender<Result<(u32, isize)>>,
+        hotkey_modifiers: HotkeyModifiers,
+        hotkey_key: KeyCode,
     ) -> Result<()> {
         unsafe {
             let thread_id = windows::Win32::System::Threading::GetCurrentThreadId();
@@ -320,7 +327,7 @@ mod windows_impl {
                 }
             };
             let mut hotkey = WindowsGlobalHotkey::new();
-            if let Err(error) = hotkey.register_default() {
+            if let Err(error) = hotkey.register(hotkey_modifiers, hotkey_key) {
                 let _ = DestroyWindow(window);
                 let _ = ready.send(Err(AppError::platform_failed(format!(
                     "Register Alt+Space launcher hotkey: {error}"
@@ -598,7 +605,11 @@ mod windows_impl {
         ///
         /// # Errors
         /// This implementation does not fail.
-        pub fn start(_sender: Sender<TrayEvent>) -> Result<Self> {
+        pub fn start(
+            _sender: Sender<TrayEvent>,
+            _hotkey_modifiers: core::HotkeyModifiers,
+            _hotkey_key: core::KeyCode,
+        ) -> Result<Self> {
             Ok(Self)
         }
 

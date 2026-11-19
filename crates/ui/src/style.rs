@@ -90,3 +90,14 @@ pub const LIGHT_ACCENT: Color = Color::from_rgb(0.12, 0.38, 0.75);
 pub const LIGHT_SELECTION: Color = Color::from_rgb(0.84, 0.89, 0.97);
 /// Light theme match highlight.
 pub const LIGHT_HIGHLIGHT: Color = Color::from_rgb(0.65, 0.35, 0.0);
+
+/// Solarized theme background.
+pub const SOLARIZED_BACKGROUND: Color = Color::from_rgb(0.0, 0.16, 0.20);
+/// Solarized theme foreground.
+pub const SOLARIZED_FOREGROUND: Color = Color::from_rgb(0.51, 0.58, 0.58);
+/// Solarized theme accent.
+pub const SOLARIZED_ACCENT: Color = Color::from_rgb(0.15, 0.55, 0.82);
+/// Solarized theme selected result.
+pub const SOLARIZED_SELECTION: Color = Color::from_rgb(0.03, 0.21, 0.26);
+/// Solarized theme match highlight.
+pub const SOLARIZED_HIGHLIGHT: Color = Color::from_rgb(0.71, 0.54, 0.0);

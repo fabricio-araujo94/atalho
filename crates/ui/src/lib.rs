@@ -2,7 +2,7 @@
 
 pub mod style;
 
-use core::{AppEntry, ScoredMatch, SearchEvent, SearchRequest};
+use core::{AppEntry, ScoredMatch, SearchEvent, SearchRequest, ThemeName};
 use iced::futures::SinkExt;
 use iced::keyboard::{self, Key, Modifiers};
 use iced::widget::{button, checkbox, column, container, row, scrollable, text, text_input};
@@ -49,6 +49,15 @@ impl Theme {
         accent: style::LIGHT_ACCENT,
         selection: style::LIGHT_SELECTION,
         highlight: style::LIGHT_HIGHLIGHT,
+    };
+
+    /// Solarized launcher palette.
+    pub const SOLARIZED: Self = Self {
+        background: style::SOLARIZED_BACKGROUND,
+        foreground: style::SOLARIZED_FOREGROUND,
+        accent: style::SOLARIZED_ACCENT,
+        selection: style::SOLARIZED_SELECTION,
+        highlight: style::SOLARIZED_HIGHLIGHT,
     };
 }
 
@@ -150,6 +159,8 @@ pub struct LauncherState {
 impl LauncherState {
     /// Creates launcher state connected to the async search and execution channels.
     #[must_use]
+    #[allow(clippy::missing_const_for_fn)]
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         query_sender: mpsc::UnboundedSender<SearchRequest>,
         execute_sender: mpsc::UnboundedSender<AppEntry>,
@@ -158,13 +169,19 @@ impl LauncherState {
         auto_start_sender: mpsc::UnboundedSender<bool>,
         max_results: usize,
         auto_start: bool,
+        theme_name: ThemeName,
     ) -> Self {
+        let theme = match theme_name {
+            ThemeName::Dark => Theme::DARK,
+            ThemeName::Light => Theme::LIGHT,
+            ThemeName::Solarized => Theme::SOLARIZED,
+        };
         Self {
             query: String::new(),
             results: Vec::new(),
             selected_index: 0,
             is_visible: true,
-            theme: Theme::default(),
+            theme,
             max_results,
             total_results: 0,
             elapsed_us: 0,
@@ -379,6 +396,7 @@ impl UiCommandSource {
 ///
 /// # Errors
 /// Returns an error if Iced cannot create or run the native launcher window.
+#[allow(clippy::too_many_arguments)]
 pub fn run(
     query_sender: mpsc::UnboundedSender<SearchRequest>,
     execute_sender: mpsc::UnboundedSender<AppEntry>,
@@ -387,6 +405,7 @@ pub fn run(
     auto_start_sender: mpsc::UnboundedSender<bool>,
     max_results: usize,
     auto_start: bool,
+    theme_name: ThemeName,
 ) -> iced::Result {
     let search_events = SearchEventSource::new(search_events);
     let ui_commands = UiCommandSource::new(ui_commands);
@@ -400,13 +419,20 @@ pub fn run(
                 auto_start_sender.clone(),
                 max_results,
                 auto_start,
+                theme_name,
             )
         },
         |state: &mut LauncherState, message| state.update(message),
         view,
     )
     .subscription(subscription)
-    .theme(|_: &LauncherState| IcedTheme::Dark)
+    .theme(|state: &LauncherState| {
+        if state.theme == Theme::LIGHT {
+            IcedTheme::Light
+        } else {
+            IcedTheme::Dark
+        }
+    })
     .style(
         |state: &LauncherState, _theme: &IcedTheme| iced::theme::Style {
             background_color: Color::TRANSPARENT,
@@ -740,7 +766,7 @@ fn ui_command_stream(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use core::{AppSource, ScoredMatch};
+    use core::{AppSource, ScoredMatch, ThemeName};
 
     fn state() -> LauncherState {
         let (query_sender, _) = mpsc::unbounded_channel();
@@ -755,6 +781,7 @@ mod tests {
             mpsc::unbounded_channel().0,
             8,
             false,
+            ThemeName::Dark,
         )
     }
 
@@ -773,6 +800,7 @@ mod tests {
             auto_start_sender,
             8,
             false,
+            ThemeName::Dark,
         );
 
         let _task = state.update(Message::QueryChanged("calc".to_owned()));
@@ -821,6 +849,7 @@ mod tests {
             mpsc::unbounded_channel().0,
             8,
             false,
+            ThemeName::Dark,
         );
         state.results = vec![ScoredMatch::new(
             AppEntry::new("Editor", "editor.exe", AppSource::StartMenu),
@@ -852,6 +881,7 @@ mod tests {
             mpsc::unbounded_channel().0,
             8,
             false,
+            ThemeName::Dark,
         );
         state.results = vec![ScoredMatch::new(
             AppEntry::new("Editor", "editor.exe", AppSource::StartMenu),
@@ -893,6 +923,7 @@ mod tests {
             auto_start_sender,
             8,
             false,
+            ThemeName::Dark,
         );
 
         let _task = state.update(Message::AutoStartChanged(true));

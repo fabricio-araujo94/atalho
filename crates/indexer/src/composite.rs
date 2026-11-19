@@ -43,6 +43,36 @@ impl CompositeIndexer {
         Self { indexers }
     }
 
+    /// Creates a composite indexer containing only the requested application sources.
+    #[must_use]
+    pub fn from_sources(sources: &[AppSource]) -> Self {
+        let mut indexers: Vec<Arc<dyn Indexer>> = Vec::new();
+        let mut start_menu = false;
+        let mut desktop = false;
+        let mut path = false;
+        for source in sources {
+            match source {
+                AppSource::StartMenu if !start_menu => {
+                    start_menu = true;
+                    indexers.push(Arc::new(StartMenuIndexer::new()));
+                }
+                AppSource::Desktop if !desktop => {
+                    desktop = true;
+                    indexers.push(Arc::new(DesktopIndexer::new()));
+                }
+                AppSource::Path if !path => {
+                    path = true;
+                    indexers.push(Arc::new(PathIndexer::new()));
+                }
+                AppSource::StartMenu
+                | AppSource::Desktop
+                | AppSource::Path
+                | AppSource::UserPinned => {}
+            }
+        }
+        Self::new(indexers)
+    }
+
     /// Adds an additional [`Indexer`] to this composite indexer.
     #[must_use]
     pub fn with_indexer(mut self, indexer: impl Indexer + 'static) -> Self {
