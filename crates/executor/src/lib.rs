@@ -269,7 +269,7 @@ mod windows_process {
             .is_some_and(|extension| {
                 extension.eq_ignore_ascii_case("cmd") || extension.eq_ignore_ascii_case("bat")
             });
-        let (application_name, command_line) = if is_batch {
+        let (application_name, mut command_line) = if is_batch {
             let command_interpreter =
                 std::env::var_os("COMSPEC").unwrap_or_else(|| OsStr::new("cmd.exe").to_os_string());
             let application_name = Path::new(&command_interpreter)
@@ -310,7 +310,7 @@ mod windows_process {
                 application_name
                     .as_ref()
                     .map_or(PCWSTR::null(), |name| PCWSTR(name.as_ptr())),
-                PWSTR(command_line.as_ptr().cast_mut()),
+                PWSTR(command_line.as_mut_ptr()),
                 None,
                 None,
                 false,
