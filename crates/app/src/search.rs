@@ -18,7 +18,7 @@ pub struct SearchService {
     matcher: Arc<dyn Matcher>,
     persistence: Arc<dyn Persistence>,
     history: Option<Arc<dyn History>>,
-    cache: Arc<RwLock<Vec<AppEntry>>>,
+    cache: Arc<RwLock<Arc<[AppEntry]>>>,
     event_sender: broadcast::Sender<SearchEvent>,
     debounce_duration: Duration,
     active_search_token: Arc<std::sync::Mutex<Option<CancellationToken>>>,
@@ -27,7 +27,7 @@ pub struct SearchService {
 }
 
 struct SearchTaskContext {
-    cache: Arc<RwLock<Vec<AppEntry>>>,
+    cache: Arc<RwLock<Arc<[AppEntry]>>>,
     searcher: Arc<dyn Matcher>,
     history: Option<Arc<dyn History>>,
     event_tx: broadcast::Sender<SearchEvent>,
@@ -102,7 +102,7 @@ impl SearchService {
             matcher,
             persistence,
             history: None,
-            cache: Arc::new(RwLock::new(Vec::new())),
+            cache: Arc::new(RwLock::new(Arc::from(Vec::<AppEntry>::new()))),
             event_sender,
             debounce_duration,
             active_search_token: Arc::new(std::sync::Mutex::new(None)),
@@ -119,7 +119,7 @@ impl SearchService {
 
     /// Returns a shared reference to the in-memory application cache.
     #[must_use]
-    pub fn cache(&self) -> Arc<RwLock<Vec<AppEntry>>> {
+    pub fn cache(&self) -> Arc<RwLock<Arc<[AppEntry]>>> {
         Arc::clone(&self.cache)
     }
 
@@ -157,7 +157,7 @@ impl SearchService {
                 cached_apps.len()
             );
             let mut cache_guard = self.cache.write().await;
-            *cache_guard = cached_apps;
+            *cache_guard = Arc::from(cached_apps);
         }
 
         if cache_is_stale || self.cache.read().await.is_empty() {
@@ -214,7 +214,7 @@ impl SearchService {
                     // Atomically replace in-memory cache
                     {
                         let mut cache_guard = cache.write().await;
-                        *cache_guard = new_entries;
+                        *cache_guard = Arc::from(new_entries);
                     }
                     debug!("In-memory application cache atomically refreshed");
                 }
@@ -238,7 +238,7 @@ impl SearchService {
         // Snapshot current cache under read lock
         let entries = {
             let guard = self.cache.read().await;
-            guard.clone()
+            Arc::clone(&guard)
         };
 
         let searcher = Arc::clone(&self.matcher);
@@ -345,7 +345,10 @@ impl SearchService {
         }
 
         let start = Instant::now();
-        let entries = cache.read().await.clone();
+        let entries = {
+            let guard = cache.read().await;
+            Arc::clone(&guard)
+        };
         let query = req.query.clone();
         let max_results = req.max_results;
         let token_for_match = token.clone();
@@ -599,16 +602,18 @@ mod tests {
         if let Err(err) = service.initialize().await {
             panic!("service initialization failed: {err}");
         }
-        assert_eq!(service.cache.read().await.as_slice(), &[stale_entry]);
+        let stale_snapshot = service.cache.read().await.clone();
+        assert_eq!(stale_snapshot.as_ref(), std::slice::from_ref(&stale_entry));
 
         let deadline = tokio::time::Instant::now() + Duration::from_secs(1);
         loop {
-            if service.cache.read().await.as_slice() == [fresh_entry.clone()] {
+            if service.cache.read().await.as_ref() == [fresh_entry.clone()] {
                 break;
             }
             assert!(tokio::time::Instant::now() < deadline, "re-index timed out");
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
+        assert_eq!(stale_snapshot.as_ref(), std::slice::from_ref(&stale_entry));
     }
 
     #[test]
