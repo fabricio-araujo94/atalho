@@ -6,6 +6,7 @@
 use core::{AppEntry, Matcher, ScoredMatch};
 use rayon::prelude::*;
 use std::cell::RefCell;
+use std::sync::OnceLock;
 use tokio_util::sync::CancellationToken;
 
 // ============================================================================
@@ -320,14 +321,17 @@ impl Matcher for FuzzyMatcher {
 // Parallel Search Implementation (Rayon)
 // ============================================================================
 
+static MATCHER_POOL: OnceLock<Result<rayon::ThreadPool, rayon::ThreadPoolBuildError>> =
+    OnceLock::new();
+
 /// Executes fuzzy search in parallel across thread pool partitioning entries with Rayon.
 ///
 /// # Arguments
 /// * `entries` - Slice of application entries to search.
 /// * `query` - Search query string.
-/// * `num_threads` - Number of worker threads to use in the pool.
+/// * `num_threads` - Retained for API compatibility; the shared pool uses Rayon's default.
 #[must_use]
-pub fn parallel_search(entries: &[AppEntry], query: &str, num_threads: usize) -> Vec<ScoredMatch> {
+pub fn parallel_search(entries: &[AppEntry], query: &str, _num_threads: usize) -> Vec<ScoredMatch> {
     let trimmed_query = query.trim();
     if trimmed_query.is_empty() {
         return entries
@@ -337,9 +341,6 @@ pub fn parallel_search(entries: &[AppEntry], query: &str, num_threads: usize) ->
     }
 
     let normalized_query = core::normalize_name(trimmed_query);
-    let pool = rayon::ThreadPoolBuilder::new()
-        .num_threads(num_threads.max(1))
-        .build();
 
     let search_fn = || {
         let mut results: Vec<ScoredMatch> = entries
@@ -359,7 +360,9 @@ pub fn parallel_search(entries: &[AppEntry], query: &str, num_threads: usize) ->
         results
     };
 
-    pool.map_or_else(|_| search_fn(), |p| p.install(search_fn))
+    let pool = MATCHER_POOL.get_or_init(|| rayon::ThreadPoolBuilder::new().build());
+    pool.as_ref()
+        .map_or_else(|_| search_fn(), |pool| pool.install(search_fn))
 }
 
 #[cfg(test)]
@@ -496,9 +499,15 @@ mod tests {
         let matcher = FuzzyMatcher::new();
         let seq_results = matcher.search("chr", &entries);
         let par_results = parallel_search(&entries, "chr", 2);
+        let repeated_results = parallel_search(&entries, "chr", 4);
 
         assert_eq!(seq_results.len(), par_results.len());
+        assert_eq!(seq_results.len(), repeated_results.len());
         for (s, p) in seq_results.iter().zip(par_results.iter()) {
+            assert_eq!(s.entry.name, p.entry.name);
+            assert_eq!(s.score, p.score);
+        }
+        for (s, p) in seq_results.iter().zip(repeated_results.iter()) {
             assert_eq!(s.entry.name, p.entry.name);
             assert_eq!(s.score, p.score);
         }
