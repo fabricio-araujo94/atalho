@@ -104,6 +104,26 @@ impl FuzzyMatcher {
             return Some((0, Vec::new()));
         }
 
+        let normalized_query = core::normalize_name(query);
+        Self::score_candidate_with_normalized_query(
+            query,
+            &normalized_query,
+            candidate_name,
+            normalized_name,
+        )
+    }
+
+    #[allow(clippy::cast_possible_wrap)]
+    fn score_candidate_with_normalized_query(
+        query: &str,
+        normalized_query: &str,
+        candidate_name: &str,
+        normalized_name: &str,
+    ) -> Option<(i64, Vec<usize>)> {
+        if query.is_empty() {
+            return Some((0, Vec::new()));
+        }
+
         SCRATCH.with(|cell| {
             let mut scratch = cell.borrow_mut();
             scratch.clear();
@@ -111,7 +131,7 @@ impl FuzzyMatcher {
             scratch.chars_query.extend(query.chars());
             scratch
                 .chars_query_normalized
-                .extend(core::normalize_name(query).chars());
+                .extend(normalized_query.chars());
             scratch.chars_target.extend(normalized_name.chars());
 
             let query_len = scratch.chars_query_normalized.len();
@@ -271,14 +291,21 @@ impl Matcher for FuzzyMatcher {
             return Some(matches);
         }
 
+        if token.is_cancelled() {
+            return None;
+        }
+        let normalized_query = core::normalize_name(trimmed_query);
         let mut matches = Vec::new();
         for entry in entries {
             if token.is_cancelled() {
                 return None;
             }
-            if let Some((score, match_positions)) =
-                Self::score_candidate(trimmed_query, &entry.name, &entry.normalized_name)
-            {
+            if let Some((score, match_positions)) = Self::score_candidate_with_normalized_query(
+                trimmed_query,
+                &normalized_query,
+                &entry.name,
+                &entry.normalized_name,
+            ) {
                 matches.push(ScoredMatch::new(entry.clone(), score, match_positions));
             }
         }
@@ -309,6 +336,7 @@ pub fn parallel_search(entries: &[AppEntry], query: &str, num_threads: usize) ->
             .collect();
     }
 
+    let normalized_query = core::normalize_name(trimmed_query);
     let pool = rayon::ThreadPoolBuilder::new()
         .num_threads(num_threads.max(1))
         .build();
@@ -317,8 +345,13 @@ pub fn parallel_search(entries: &[AppEntry], query: &str, num_threads: usize) ->
         let mut results: Vec<ScoredMatch> = entries
             .par_iter()
             .filter_map(|entry| {
-                FuzzyMatcher::score_candidate(trimmed_query, &entry.name, &entry.normalized_name)
-                    .map(|(score, positions)| ScoredMatch::new(entry.clone(), score, positions))
+                FuzzyMatcher::score_candidate_with_normalized_query(
+                    trimmed_query,
+                    &normalized_query,
+                    &entry.name,
+                    &entry.normalized_name,
+                )
+                .map(|(score, positions)| ScoredMatch::new(entry.clone(), score, positions))
             })
             .collect();
 
@@ -389,6 +422,21 @@ mod tests {
         let result = FuzzyMatcher::score_candidate("j", "Node.js", "nodejs");
 
         assert_eq!(result, Some((5, vec![5])));
+    }
+
+    #[test]
+    fn test_pre_normalized_query_scoring_matches_public_api() {
+        let query = "Calc";
+        let normalized_query = core::normalize_name(query);
+        let expected = FuzzyMatcher::score_candidate(query, "Calculator", "calculator");
+        let actual = FuzzyMatcher::score_candidate_with_normalized_query(
+            query,
+            &normalized_query,
+            "Calculator",
+            "calculator",
+        );
+
+        assert_eq!(actual, expected);
     }
 
     #[test]
