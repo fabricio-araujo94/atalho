@@ -178,17 +178,16 @@ impl FilePersistence {
         let mut records = Vec::new();
         for file_name in [ROTATED_HISTORY_FILE, HISTORY_FILE] {
             let path = self.file_path(file_name);
-            let bytes = match tokio::fs::read(&path).await {
+            let mut bytes = match tokio::fs::read(&path).await {
                 Ok(bytes) => bytes,
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
                 Err(error) => return Err(path_error(&path, error)),
             };
-            if bytes.len() % HISTORY_RECORD_SIZE != 0 {
+            let remainder = bytes.len() % HISTORY_RECORD_SIZE;
+            if remainder != 0 {
                 truncate_partial_history_file(&path).await?;
+                bytes.truncate(bytes.len() - remainder);
             }
-            let bytes = tokio::fs::read(&path)
-                .await
-                .map_err(|error| path_error(&path, error))?;
             let (chunks, _) = bytes.as_chunks::<HISTORY_RECORD_SIZE>();
             records.extend(chunks.iter().map(|chunk| {
                 let id = Uuid::from_bytes(chunk[8..].try_into().unwrap_or([0; 16]));
@@ -843,6 +842,18 @@ mod tests {
             )
             .await
             .is_ok()
+        );
+
+        assert_eq!(
+            History::recent(&persistence, 1).await.ok(),
+            Some(vec![existing])
+        );
+        assert_eq!(
+            tokio::fs::metadata(&history_path)
+                .await
+                .map(|metadata| metadata.len())
+                .ok(),
+            Some(u64::try_from(HISTORY_RECORD_SIZE).unwrap_or(u64::MAX))
         );
 
         assert!(History::record(&persistence, latest).await.is_ok());
