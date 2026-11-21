@@ -34,6 +34,22 @@ struct SearchTaskContext {
     active_search_token: Arc<std::sync::Mutex<Option<CancellationToken>>>,
 }
 
+fn send_if_search_active(
+    active_search_token: &std::sync::Mutex<Option<CancellationToken>>,
+    token: &CancellationToken,
+    event_tx: &broadcast::Sender<SearchEvent>,
+    event: SearchEvent,
+) {
+    // Serialize the cancellation check and send with submit_query's token replacement,
+    // preventing an older search from publishing an event after a newer query is submitted.
+    let _active = active_search_token
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if !token.is_cancelled() {
+        let _ = event_tx.send(event);
+    }
+}
+
 impl SearchService {
     /// Default debounce window in milliseconds.
     pub const DEFAULT_DEBOUNCE_MS: u64 = 80;
@@ -324,14 +340,12 @@ impl SearchService {
             event_tx,
             active_search_token,
         } = context;
-        {
-            let _active = active_search_token
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            if !token.is_cancelled() {
-                let _ = event_tx.send(SearchEvent::Loading);
-            }
-        }
+        send_if_search_active(
+            &active_search_token,
+            &token,
+            &event_tx,
+            SearchEvent::Loading,
+        );
 
         tokio::select! {
             () = tokio::time::sleep(debounce) => {}
@@ -378,12 +392,12 @@ impl SearchService {
                             Self::apply_history_boost(&mut scored_results, &frequency);
                         }
                         Err(error) => {
-                            let _active = active_search_token
-                                .lock()
-                                .unwrap_or_else(std::sync::PoisonError::into_inner);
-                            if !token.is_cancelled() {
-                                let _ = event_tx.send(SearchEvent::Error(error));
-                            }
+                            send_if_search_active(
+                                &active_search_token,
+                                &token,
+                                &event_tx,
+                                SearchEvent::Error(error),
+                            );
                             return;
                         }
                     }
@@ -398,12 +412,12 @@ impl SearchService {
                     results.len()
                 );
                 let response = SearchResponse::new(results, total, elapsed_us);
-                let _active = active_search_token
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
-                if !token.is_cancelled() {
-                    let _ = event_tx.send(SearchEvent::Results(response));
-                }
+                send_if_search_active(
+                    &active_search_token,
+                    &token,
+                    &event_tx,
+                    SearchEvent::Results(response),
+                );
             }
             Ok(None) => {
                 debug!("Search cancelled internally for query '{}'", req.query);
@@ -411,12 +425,12 @@ impl SearchService {
             Err(join_err) => {
                 let err =
                     AppError::execution_failed(format!("Search task failed to join: {join_err}"));
-                let _active = active_search_token
-                    .lock()
-                    .unwrap_or_else(std::sync::PoisonError::into_inner);
-                if !token.is_cancelled() {
-                    let _ = event_tx.send(SearchEvent::Error(err));
-                }
+                send_if_search_active(
+                    &active_search_token,
+                    &token,
+                    &event_tx,
+                    SearchEvent::Error(err),
+                );
             }
         }
     }
@@ -448,6 +462,26 @@ mod tests {
     use super::*;
     use core::{AppSource, Indexer, Matcher, ScoredMatch};
     use persistence::InMemoryPersistence;
+
+    #[test]
+    fn cancelled_search_does_not_publish_events() {
+        let active_search_token = std::sync::Mutex::new(None);
+        let token = CancellationToken::new();
+        token.cancel();
+        let (event_tx, mut event_rx) = broadcast::channel(1);
+
+        send_if_search_active(
+            &active_search_token,
+            &token,
+            &event_tx,
+            SearchEvent::Loading,
+        );
+
+        assert!(matches!(
+            event_rx.try_recv(),
+            Err(broadcast::error::TryRecvError::Empty)
+        ));
+    }
 
     struct DummyIndexer {
         apps: Vec<AppEntry>,
