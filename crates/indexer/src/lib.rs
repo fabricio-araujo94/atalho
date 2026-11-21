@@ -97,25 +97,31 @@ mod tests {
         let path = PathBuf::from("C:\\Windows\\notepad.exe");
         let app1 = AppEntry::new("Notepad", &path, AppSource::StartMenu);
         let app2 = AppEntry::new("notepad", &path, AppSource::Path);
+        let app4 = AppEntry::new("Notepad", "C:\\Tools\\notepad.exe", AppSource::Path);
         let app3 = AppEntry::new("Calculator", "C:\\Windows\\calc.exe", AppSource::StartMenu);
 
         let indexer1 = MockIndexer {
             apps: vec![app1.clone()],
         };
         let indexer2 = MockIndexer {
-            apps: vec![app2.clone(), app3.clone()],
+            apps: vec![app2.clone(), app3.clone(), app4.clone()],
         };
 
         let composite = CompositeIndexer::new(vec![Arc::new(indexer1), Arc::new(indexer2)]);
         let results = composite.scan().await.unwrap_or_default();
 
         // Notepad should be deduplicated (StartMenu preferred over Path)
-        assert_eq!(results.len(), 2);
-        let notepad_entry = results.iter().find(|a| a.normalized_name == "notepad");
-        assert!(notepad_entry.is_some());
-        if let Some(entry) = notepad_entry {
-            assert_eq!(entry.source, AppSource::StartMenu);
-        }
+        assert_eq!(results.len(), 3);
+        assert!(
+            results
+                .iter()
+                .any(|entry| entry.executable_path == path && entry.source == AppSource::StartMenu)
+        );
+        assert!(
+            results
+                .iter()
+                .any(|entry| entry.executable_path == app4.executable_path)
+        );
     }
 
     #[tokio::test]

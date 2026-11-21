@@ -2,7 +2,7 @@
 
 use core::{AppEntry, AppSource, Indexer, Result};
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::Arc;
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
@@ -140,15 +140,26 @@ impl Indexer for CompositeIndexer {
         all_entries.sort_by_key(|entry| Self::source_priority(entry.source));
 
         // Deduplicate by (normalized_name, executable_path) as specified in Architectural Directive 4
-        let mut seen: HashSet<(String, PathBuf)> = HashSet::new();
-        let mut deduped_entries = Vec::with_capacity(all_entries.len());
+        let mut seen: HashSet<(&str, &Path)> = HashSet::with_capacity(all_entries.len());
+        let mut keep_entry = Vec::with_capacity(all_entries.len());
 
-        for entry in all_entries {
+        for entry in &all_entries {
             if token.is_cancelled() {
                 return Ok(None);
             }
-            let key = (entry.normalized_name.clone(), entry.executable_path.clone());
-            if seen.insert(key) {
+            keep_entry.push(seen.insert((
+                entry.normalized_name.as_str(),
+                entry.executable_path.as_path(),
+            )));
+        }
+        drop(seen);
+
+        let mut deduped_entries = Vec::with_capacity(all_entries.len());
+        for (entry, keep) in all_entries.into_iter().zip(keep_entry) {
+            if token.is_cancelled() {
+                return Ok(None);
+            }
+            if keep {
                 deduped_entries.push(entry);
             }
         }
