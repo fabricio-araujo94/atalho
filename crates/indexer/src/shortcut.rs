@@ -83,8 +83,10 @@ mod windows_impl {
         let requires_admin = link_flags & SLDF_RUNAS_USER.0 as u32 != 0;
 
         // SAFETY: Resolving link without displaying UI dialogs if broken.
-        unsafe {
-            let _ = shell_link.Resolve(HWND(std::ptr::null_mut()), SLR_NO_UI.0 as u32);
+        if let Err(error) =
+            unsafe { shell_link.Resolve(HWND(std::ptr::null_mut()), SLR_NO_UI.0 as u32) }
+        {
+            tracing::trace!(path = %lnk_path.display(), error = %error, "Failed to resolve shell link");
         }
 
         // 1. Target path
@@ -104,7 +106,9 @@ mod windows_impl {
         // 2. Arguments
         let mut args_buf = [0u16; 1024];
         // SAFETY: Querying arguments string.
-        let _ = unsafe { shell_link.GetArguments(&mut args_buf) };
+        if let Err(error) = unsafe { shell_link.GetArguments(&mut args_buf) } {
+            tracing::trace!(path = %lnk_path.display(), error = %error, "Failed to read shell-link arguments");
+        }
         let args_len = args_buf.iter().position(|&c| c == 0).unwrap_or(0);
         let arguments = if args_len > 0 {
             let s = String::from_utf16_lossy(&args_buf[..args_len])
@@ -119,7 +123,11 @@ mod windows_impl {
         let mut icon_buf = [0u16; 1024];
         let mut icon_index = 0i32;
         // SAFETY: Querying icon location string.
-        let _ = unsafe { shell_link.GetIconLocation(&mut icon_buf, &raw mut icon_index) };
+        if let Err(error) =
+            unsafe { shell_link.GetIconLocation(&mut icon_buf, &raw mut icon_index) }
+        {
+            tracing::trace!(path = %lnk_path.display(), error = %error, "Failed to read shell-link icon location");
+        }
         let icon_len = icon_buf.iter().position(|&c| c == 0).unwrap_or(0);
         let icon_path = if icon_len > 0 {
             let icon_os = OsString::from_wide(&icon_buf[..icon_len]);

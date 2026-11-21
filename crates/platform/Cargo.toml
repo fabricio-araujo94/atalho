@@ -14,6 +14,7 @@ workspace = true
 dashmap = { workspace = true }
 core = { workspace = true }
 tokio = { workspace = true }
+tracing = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 windows = { workspace = true, features = [

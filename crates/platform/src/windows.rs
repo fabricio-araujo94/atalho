@@ -572,7 +572,9 @@ impl ForegroundManager for WindowsForegroundManager {
 
         // SAFETY: SetFocus assigns keyboard focus to the newly activated window.
         let focus_result = unsafe { raw_set_focus(target_hwnd) };
-        let _ = win32_result(focus_result, "SetFocus");
+        if let Err(error) = win32_result(focus_result, "SetFocus") {
+            tracing::debug!(error = %error, "SetFocus failed");
+        }
 
         Ok(())
     }
