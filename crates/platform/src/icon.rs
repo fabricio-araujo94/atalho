@@ -148,9 +148,11 @@ mod windows_icon {
 
     impl Drop for ScreenDc {
         fn drop(&mut self) {
-            // SAFETY: Releases the screen DC acquired with GetDC(None).
-            unsafe {
-                let _ = ReleaseDC(HWND::default(), self.0);
+            if !self.0.is_invalid() {
+                // SAFETY: Releases the valid screen DC acquired with GetDC(None).
+                unsafe {
+                    let _ = ReleaseDC(HWND::default(), self.0);
+                }
             }
         }
     }
@@ -159,9 +161,11 @@ mod windows_icon {
 
     impl Drop for MemoryDc {
         fn drop(&mut self) {
-            // SAFETY: Deletes the compatible DC created for icon rasterization.
-            unsafe {
-                let _ = DeleteDC(self.0);
+            if !self.0.is_invalid() {
+                // SAFETY: Deletes the valid compatible DC created for icon rasterization.
+                unsafe {
+                    let _ = DeleteDC(self.0);
+                }
             }
         }
     }
