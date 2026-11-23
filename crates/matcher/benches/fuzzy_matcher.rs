@@ -1,6 +1,6 @@
 //! Benchmarks for the `matcher` crate fuzzy scoring engine.
 
-use core::{AppEntry, AppSource, Matcher};
+use atalho_core::{AppEntry, AppSource, Matcher};
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use matcher::{FuzzyMatcher, parallel_search};
 

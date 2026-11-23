@@ -2,7 +2,7 @@
 
 pub mod style;
 
-use core::{AppEntry, ScoredMatch, SearchEvent, SearchRequest, ThemeName};
+use atalho_core::{AppEntry, ScoredMatch, SearchEvent, SearchRequest, ThemeName};
 use iced::futures::SinkExt;
 use iced::keyboard::{self, Key, Modifiers};
 use iced::widget::{button, checkbox, column, container, row, scrollable, text, text_input};
@@ -77,7 +77,7 @@ pub enum Message {
     /// Search service returned a result set.
     ResultsReceived(Vec<ScoredMatch>, usize, u64),
     /// An application icon finished loading.
-    IconLoaded(PathBuf, Option<core::Image>),
+    IconLoaded(PathBuf, Option<atalho_core::Image>),
     /// Search service started processing the latest query.
     SearchLoading,
     /// Search service reported an error.
@@ -153,7 +153,7 @@ pub struct LauncherState {
     pub settings_open: bool,
     /// Whether the launcher starts at sign-in.
     pub auto_start: bool,
-    icons: HashMap<PathBuf, core::Image>,
+    icons: HashMap<PathBuf, atalho_core::Image>,
     loading_icons: HashSet<PathBuf>,
     query_sender: mpsc::UnboundedSender<SearchRequest>,
     execute_sender: mpsc::UnboundedSender<AppEntry>,
@@ -680,12 +680,12 @@ fn settings_view(state: &LauncherState) -> Element<'_, Message> {
     .into()
 }
 
-const fn source_badge(source: core::AppSource) -> &'static str {
+const fn source_badge(source: atalho_core::AppSource) -> &'static str {
     match source {
-        core::AppSource::StartMenu => "START",
-        core::AppSource::Path => "PATH",
-        core::AppSource::Desktop => "DESKTOP",
-        core::AppSource::UserPinned => "PINNED",
+        atalho_core::AppSource::StartMenu => "START",
+        atalho_core::AppSource::Path => "PATH",
+        atalho_core::AppSource::Desktop => "DESKTOP",
+        atalho_core::AppSource::UserPinned => "PINNED",
     }
 }
 
@@ -824,7 +824,7 @@ fn ui_command_stream(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use core::{AppSource, ScoredMatch, ThemeName};
+    use atalho_core::{AppSource, ScoredMatch, ThemeName};
 
     fn state() -> LauncherState {
         let (query_sender, _) = mpsc::unbounded_channel();

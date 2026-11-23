@@ -11,7 +11,7 @@ description = "Fuzzy search matching and ranking algorithms for Atalho"
 workspace = true
 
 [dependencies]
-core = { workspace = true }
+atalho-core = { workspace = true }
 rayon = { workspace = true }
 tokio-util = { workspace = true }
 

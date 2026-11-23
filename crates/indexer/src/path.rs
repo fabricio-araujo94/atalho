@@ -1,6 +1,6 @@
 //! System PATH application indexer.
 
-use core::{AppEntry, AppError, AppSource, Indexer, Result};
+use atalho_core::{AppEntry, AppError, AppSource, Indexer, Result};
 use std::path::PathBuf;
 use tokio_util::sync::CancellationToken;
 use tracing::debug;

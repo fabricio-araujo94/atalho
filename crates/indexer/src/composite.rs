@@ -1,6 +1,6 @@
 //! Concurrent composite application indexer.
 
-use core::{AppEntry, AppSource, Indexer, Result};
+use atalho_core::{AppEntry, AppSource, Indexer, Result};
 use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;

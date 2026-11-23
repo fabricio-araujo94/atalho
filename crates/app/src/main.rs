@@ -6,7 +6,7 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 use app::search::SearchService;
-use core::{
+use atalho_core::{
     AppConfig, AppSource, Config, Executor, GlobalHotkey, History, HotkeyModifiers, KeyCode,
     Matcher, Persistence,
 };
@@ -24,7 +24,7 @@ use tokio::sync::mpsc;
 use tracing::{error, warn};
 use ui::UiCommand;
 
-fn main() -> core::Result<()> {
+fn main() -> atalho_core::Result<()> {
     let Some(mut instance) = SingleInstanceGuard::acquire()? else {
         return Ok(());
     };
@@ -56,7 +56,7 @@ fn main() -> core::Result<()> {
         .enable_all()
         .build()
         .map_err(|error| {
-            core::AppError::execution_failed(format!("Tokio startup failed: {error}"))
+            atalho_core::AppError::execution_failed(format!("Tokio startup failed: {error}"))
         })?;
     let search_service = Arc::new(
         SearchService::with_debounce(
@@ -110,7 +110,7 @@ fn main() -> core::Result<()> {
         config.auto_start,
         config.theme,
     )
-    .map_err(|error| core::AppError::execution_failed(format!("Iced UI failed: {error}")));
+    .map_err(|error| atalho_core::AppError::execution_failed(format!("Iced UI failed: {error}")));
 
     shutdown(ShutdownContext {
         runtime,
@@ -223,7 +223,7 @@ fn shutdown(context: ShutdownContext) {
 fn start_tray_event_bridge(
     receiver: std_mpsc::Receiver<TrayEvent>,
     ui_sender: mpsc::UnboundedSender<UiCommand>,
-) -> core::Result<JoinHandle<()>> {
+) -> atalho_core::Result<JoinHandle<()>> {
     std::thread::Builder::new()
         .name("launcher-tray-event-bridge".to_owned())
         .spawn(move || {
@@ -240,7 +240,9 @@ fn start_tray_event_bridge(
             }
         })
         .map_err(|error| {
-            core::AppError::execution_failed(format!("Tray event bridge startup failed: {error}"))
+            atalho_core::AppError::execution_failed(format!(
+                "Tray event bridge startup failed: {error}"
+            ))
         })
 }
 
@@ -297,7 +299,7 @@ fn start_auto_start_worker(
             let os_result = tokio::task::spawn_blocking(move || platform::set_auto_start(enabled))
                 .await
                 .map_err(|error| {
-                    core::AppError::execution_failed(format!(
+                    atalho_core::AppError::execution_failed(format!(
                         "Auto-start registration task failed: {error}"
                     ))
                 })
@@ -314,7 +316,7 @@ fn start_auto_start_worker(
             let save_result = tokio::task::spawn_blocking(move || config_for_save.save(&updated))
                 .await
                 .map_err(|error| {
-                    core::AppError::execution_failed(format!(
+                    atalho_core::AppError::execution_failed(format!(
                         "Auto-start configuration save task failed: {error}"
                     ))
                 })

@@ -11,7 +11,7 @@ description = "Iced-based graphical user interface for Atalho"
 workspace = true
 
 [dependencies]
-core = { workspace = true }
+atalho-core = { workspace = true }
 iced = { workspace = true }
 platform = { workspace = true }
 tokio = { workspace = true }

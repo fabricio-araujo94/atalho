@@ -1,7 +1,7 @@
 //! End-to-end startup, search-latency, and process-memory measurements.
 
 use app::search::SearchService;
-use core::{AppEntry, AppSource, Matcher, Persistence, SearchRequest};
+use atalho_core::{AppEntry, AppSource, Matcher, Persistence, SearchRequest};
 use indexer::DefaultIndexer;
 use matcher::FuzzyMatcher;
 use persistence::InMemoryPersistence;

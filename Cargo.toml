@@ -20,7 +20,7 @@ readme = "README.md"
 repository = "https://github.com/fabricio/atalho"
 
 [workspace.dependencies]
-core = { path = "crates/core" }
+atalho-core = { path = "crates/core" }
 indexer = { path = "crates/indexer" }
 matcher = { path = "crates/matcher" }
 executor = { path = "crates/executor" }

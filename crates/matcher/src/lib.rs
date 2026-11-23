@@ -1,9 +1,9 @@
 //! Fuzzy search matching and ranking algorithms for Atalho.
 //!
 //! Provides a high-performance, fzf-inspired fuzzy matching engine that evaluates
-//! queries against [`core::AppEntry`] candidates and produces ranked [`core::ScoredMatch`] results.
+//! queries against [`atalho_core::AppEntry`] candidates and produces ranked [`atalho_core::ScoredMatch`] results.
 
-use core::{AppEntry, Matcher, ScoredMatch};
+use atalho_core::{AppEntry, Matcher, ScoredMatch};
 use rayon::prelude::*;
 use std::cell::RefCell;
 use std::sync::OnceLock;
@@ -79,7 +79,7 @@ thread_local! {
 // Fuzzy Matcher Implementation
 // ============================================================================
 
-/// High-performance, zero-allocation fuzzy matcher implementing [`core::Matcher`].
+/// High-performance, zero-allocation fuzzy matcher implementing [`atalho_core::Matcher`].
 #[derive(Debug, Default, Clone, Copy)]
 pub struct FuzzyMatcher;
 
@@ -105,7 +105,7 @@ impl FuzzyMatcher {
             return Some((0, Vec::new()));
         }
 
-        let normalized_query = core::normalize_name(query);
+        let normalized_query = atalho_core::normalize_name(query);
         Self::score_candidate_with_normalized_query(
             query,
             &normalized_query,
@@ -295,7 +295,7 @@ impl Matcher for FuzzyMatcher {
         if token.is_cancelled() {
             return None;
         }
-        let normalized_query = core::normalize_name(trimmed_query);
+        let normalized_query = atalho_core::normalize_name(trimmed_query);
         let mut matches = Vec::new();
         for entry in entries {
             if token.is_cancelled() {
@@ -340,7 +340,7 @@ pub fn parallel_search(entries: &[AppEntry], query: &str, _num_threads: usize) -
             .collect();
     }
 
-    let normalized_query = core::normalize_name(trimmed_query);
+    let normalized_query = atalho_core::normalize_name(trimmed_query);
 
     let search_fn = || {
         let mut results: Vec<ScoredMatch> = entries
@@ -368,7 +368,7 @@ pub fn parallel_search(entries: &[AppEntry], query: &str, _num_threads: usize) -
 #[cfg(test)]
 mod tests {
     use super::*;
-    use core::AppSource;
+    use atalho_core::AppSource;
 
     fn make_app(name: &str) -> AppEntry {
         AppEntry::new(name, format!("C:\\bin\\{name}.exe"), AppSource::StartMenu)
@@ -430,7 +430,7 @@ mod tests {
     #[test]
     fn test_pre_normalized_query_scoring_matches_public_api() {
         let query = "Calc";
-        let normalized_query = core::normalize_name(query);
+        let normalized_query = atalho_core::normalize_name(query);
         let expected = FuzzyMatcher::score_candidate(query, "Calculator", "calculator");
         let actual = FuzzyMatcher::score_candidate_with_normalized_query(
             query,

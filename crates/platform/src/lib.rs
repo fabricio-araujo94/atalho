@@ -3,7 +3,7 @@
 //! Provides platform discovery, native process launch utilities, and Windows API
 //! integrations gated behind `cfg(windows)`.
 
-use core::{
+use atalho_core::{
     AppError, ForegroundManager, GlobalHotkey, HotkeyId, HotkeyModifiers, Hwnd, KeyCode, Result,
     WindowHelper,
 };

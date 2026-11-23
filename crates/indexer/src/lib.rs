@@ -1,7 +1,7 @@
 //! Application and command indexing engine for Atalho.
 //!
 //! Discovers launchable applications from Windows Start Menu, PATH, and Desktop sources,
-//! producing normalized and deduplicated lists of [`core::AppEntry`].
+//! producing normalized and deduplicated lists of [`atalho_core::AppEntry`].
 
 pub mod composite;
 pub mod desktop;
@@ -15,7 +15,7 @@ pub use path::PathIndexer;
 pub use shortcut::ShortcutInfo;
 pub use start_menu::StartMenuIndexer;
 
-use core::{AppEntry, CommandEntry, Indexer, Result};
+use atalho_core::{AppEntry, CommandEntry, Indexer, Result};
 use tokio_util::sync::CancellationToken;
 
 /// Default application indexer combining concrete system indexers with optional in-memory caching.
@@ -43,7 +43,7 @@ impl DefaultIndexer {
 
     /// Creates an indexer limited to the requested application sources.
     #[must_use]
-    pub fn from_sources(sources: &[core::AppSource]) -> Self {
+    pub fn from_sources(sources: &[atalho_core::AppSource]) -> Self {
         Self {
             composite: CompositeIndexer::from_sources(sources),
             preloaded_apps: Vec::new(),
@@ -77,7 +77,7 @@ impl Indexer for DefaultIndexer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use core::AppSource;
+    use atalho_core::AppSource;
     use std::path::PathBuf;
     use std::sync::Arc;
 

@@ -1,8 +1,8 @@
 //! Stub implementations of platform traits for non-Windows platforms.
 //!
-//! Returns [`core::AppError::PlatformFailed`] indicating unsupported platform.
+//! Returns [`atalho_core::AppError::PlatformFailed`] indicating unsupported platform.
 
-use core::{
+use atalho_core::{
     AppError, ForegroundManager, GlobalHotkey, HotkeyId, HotkeyModifiers, Hwnd, KeyCode, Result,
     WindowHelper,
 };

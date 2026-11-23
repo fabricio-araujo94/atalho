@@ -1,6 +1,6 @@
 //! On-disk persistence and lightweight in-memory test doubles.
 
-use core::{
+use atalho_core::{
     AppConfig, AppEntry, AppError, CacheMetadata, Config, History, IndexCache, Persistence, Result,
 };
 use std::collections::HashMap;
@@ -693,7 +693,7 @@ fn path_error(path: &Path, error: std::io::Error) -> AppError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use core::{AppSource, ThemeName};
+    use atalho_core::{AppSource, ThemeName};
 
     fn test_directory() -> PathBuf {
         std::env::temp_dir().join(format!("atalho-persistence-{}", Uuid::new_v4()))

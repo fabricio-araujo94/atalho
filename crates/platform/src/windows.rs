@@ -1,7 +1,7 @@
 //! Windows-specific platform primitives implementing global hotkeys, window styling,
 //! centering on primary monitor, and foreground activation.
 
-use core::{
+use atalho_core::{
     AppError, ForegroundManager, GlobalHotkey, HotkeyId, HotkeyModifiers, Hwnd, KeyCode, Result,
     WindowHelper,
 };
@@ -156,7 +156,7 @@ unsafe fn raw_set_last_error(err: WIN32_ERROR) {
 // Win32 Result Helper
 // ============================================================================
 
-/// Trait converting Win32 result types into domain [`core::Result`].
+/// Trait converting Win32 result types into domain [`atalho_core::Result`].
 pub trait IntoWin32Result {
     /// Return value type on successful Win32 execution.
     type Output;

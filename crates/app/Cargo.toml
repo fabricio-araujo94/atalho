@@ -25,7 +25,7 @@ license = false
 workspace = true
 
 [dependencies]
-core = { workspace = true }
+atalho-core = { workspace = true }
 executor = { workspace = true }
 iced = { workspace = true }
 indexer = { workspace = true }
@@ -40,7 +40,7 @@ uuid = { workspace = true }
 
 [dev-dependencies]
 async-trait = { workspace = true }
-core = { workspace = true }
+atalho-core = { workspace = true }
 indexer = { workspace = true }
 matcher = { workspace = true }
 persistence = { workspace = true }

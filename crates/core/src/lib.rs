@@ -17,14 +17,6 @@ pub mod platform;
 mod search_event;
 mod traits;
 
-// Re-export standard library core modules so macros (like `async_trait`) that emit `core::...`
-// resolve correctly without shadowing conflicts.
-#[doc(hidden)]
-pub use ::core::{
-    clone, cmp, convert, default, fmt, future, hash, hint, iter, marker, mem, ops, option, pin,
-    prelude, ptr, result, slice, str, task, write,
-};
-
 pub use config::{AppConfig, SourceToggle, ThemeName};
 pub use error::{AppError, Result};
 pub use icon::Image;

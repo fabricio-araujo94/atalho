@@ -12,7 +12,7 @@ workspace = true
 
 [dependencies]
 async-trait = { workspace = true }
-core = { workspace = true }
+atalho-core = { workspace = true }
 dunce = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }

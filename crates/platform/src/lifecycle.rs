@@ -1,7 +1,7 @@
 //! Background-utility lifecycle facilities: tray events, single-instance signaling,
 //! and per-user sign-in startup registration.
 
-use core::{AppError, Result};
+use atalho_core::{AppError, Result};
 use std::sync::mpsc;
 
 /// Actions originating from the system tray or a second launcher instance.
@@ -21,7 +21,7 @@ pub enum TrayEvent {
 mod windows_impl {
     use super::{AppError, Result, TrayEvent, mpsc};
     use crate::WindowsGlobalHotkey;
-    use core::{GlobalHotkey, HotkeyModifiers, KeyCode};
+    use atalho_core::{GlobalHotkey, HotkeyModifiers, KeyCode};
     use std::ffi::OsStr;
     use std::mem::size_of;
     use std::os::windows::ffi::OsStrExt;
@@ -608,8 +608,8 @@ mod windows_impl {
         /// This implementation does not fail.
         pub fn start(
             _sender: Sender<TrayEvent>,
-            _hotkey_modifiers: core::HotkeyModifiers,
-            _hotkey_key: core::KeyCode,
+            _hotkey_modifiers: atalho_core::HotkeyModifiers,
+            _hotkey_key: atalho_core::KeyCode,
         ) -> Result<Self> {
             Ok(Self)
         }

@@ -1,6 +1,6 @@
 //! Asynchronous application execution with platform-specific process launching.
 
-use core::{AppEntry, AppError, CommandEntry, Executor, History, Result};
+use atalho_core::{AppEntry, AppError, CommandEntry, Executor, History, Result};
 use platform::PlatformManager;
 #[cfg(windows)]
 use std::path::Path;

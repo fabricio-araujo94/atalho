@@ -1,6 +1,6 @@
 //! Asynchronous search orchestration pipeline, index lifecycle, and debounced query execution.
 
-use core::{
+use atalho_core::{
     AppEntry, AppError, History, Indexer, Matcher, Persistence, Result, ScoredMatch, SearchEvent,
     SearchRequest, SearchResponse,
 };
@@ -460,7 +460,7 @@ impl SearchService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use core::{AppSource, Indexer, Matcher, ScoredMatch};
+    use atalho_core::{AppSource, Indexer, Matcher, ScoredMatch};
     use persistence::InMemoryPersistence;
 
     #[test]

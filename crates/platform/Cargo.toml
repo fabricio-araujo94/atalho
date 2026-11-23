@@ -12,7 +12,7 @@ workspace = true
 
 [dependencies]
 dashmap = { workspace = true }
-core = { workspace = true }
+atalho-core = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 

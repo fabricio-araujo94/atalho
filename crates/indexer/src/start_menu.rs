@@ -1,6 +1,6 @@
 //! Windows Start Menu application indexer.
 
-use core::{AppEntry, AppError, AppSource, Indexer, Result};
+use atalho_core::{AppEntry, AppError, AppSource, Indexer, Result};
 use std::path::{Path, PathBuf};
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, warn};

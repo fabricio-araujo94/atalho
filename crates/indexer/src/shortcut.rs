@@ -155,7 +155,7 @@ pub use windows_impl::*;
 
 #[cfg(not(windows))]
 mod stub_impl {
-    use core::{AppError, Result};
+    use atalho_core::{AppError, Result};
     use std::path::{Path, PathBuf};
 
     #[derive(Debug, Clone, Default)]

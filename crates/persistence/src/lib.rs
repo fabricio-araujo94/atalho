@@ -1,9 +1,9 @@
 //! State, preferences, and history persistence layer for Atalho.
 //!
-//! Provides implementations of [`core::Persistence`] for storing application lists,
+//! Provides implementations of [`atalho_core::Persistence`] for storing application lists,
 //! search cache, and launch metrics.
 
-use core::{AppConfig, AppEntry, AppError, Config, History, Persistence, Result};
+use atalho_core::{AppConfig, AppEntry, AppError, Config, History, Persistence, Result};
 use std::collections::HashMap;
 use std::sync::RwLock;
 use std::time::SystemTime;
@@ -157,7 +157,7 @@ mod tests {
         let apps = vec![AppEntry::new(
             "Editor",
             "/bin/editor",
-            core::AppSource::Path,
+            atalho_core::AppSource::Path,
         )];
 
         assert!(block_on(persistence.save_apps(&apps)).is_ok());

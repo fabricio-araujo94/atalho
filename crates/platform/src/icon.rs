@@ -1,6 +1,6 @@
 //! Cached executable and shortcut icon extraction.
 
-use core::Image;
+use atalho_core::Image;
 use dashmap::DashMap;
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
@@ -36,7 +36,7 @@ fn cache() -> &'static IconCache {
 ///
 /// # Errors
 /// Returns an error if the blocking task cannot be joined.
-pub async fn icon_for(path: &Path) -> core::Result<Image> {
+pub async fn icon_for(path: &Path) -> atalho_core::Result<Image> {
     let modified = tokio::fs::metadata(path)
         .await
         .ok()
@@ -54,7 +54,7 @@ pub async fn icon_for(path: &Path) -> core::Result<Image> {
     let task_result = tokio::task::spawn_blocking(move || extract_icon(&path_buf))
         .await
         .map_err(|error| {
-            core::AppError::platform_failed(format!("icon extraction task failed: {error}"))
+            atalho_core::AppError::platform_failed(format!("icon extraction task failed: {error}"))
         })?;
     #[cfg(windows)]
     let image = task_result.unwrap_or_else(|_| Image::generic());
@@ -91,9 +91,9 @@ fn insert_cache(key: CacheKey, image: Image) {
 }
 
 #[cfg(windows)]
-fn extract_icon(path: &Path) -> core::Result<Image> {
+fn extract_icon(path: &Path) -> atalho_core::Result<Image> {
     windows_icon::extract(path).map_err(|error| {
-        core::AppError::platform_failed(format!(
+        atalho_core::AppError::platform_failed(format!(
             "failed to extract icon from {}: {error}",
             path.display()
         ))
@@ -108,7 +108,7 @@ fn extract_icon(_path: &Path) -> Image {
 #[cfg(windows)]
 mod windows_icon {
     use super::ICON_SIZE;
-    use core::Image;
+    use atalho_core::Image;
     use std::mem::size_of;
     use std::os::windows::ffi::OsStrExt;
     use std::path::Path;
