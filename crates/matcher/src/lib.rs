@@ -163,11 +163,14 @@ impl FuzzyMatcher {
             }
 
             scratch.chars_orig.extend(candidate_name.chars());
-            for original_idx in 0..scratch.chars_orig.len() {
-                let original_char = scratch.chars_orig[original_idx];
+            let MatchScratch {
+                chars_orig,
+                normalized_to_original,
+                ..
+            } = &mut *scratch;
+            for (original_idx, original_char) in chars_orig.iter().copied().enumerate() {
                 if !original_char.is_ascii_punctuation() {
-                    scratch
-                        .normalized_to_original
+                    normalized_to_original
                         .extend(original_char.to_lowercase().map(|_| original_idx));
                 }
             }
