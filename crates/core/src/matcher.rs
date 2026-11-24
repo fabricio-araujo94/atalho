@@ -31,8 +31,7 @@ impl ScoredMatch {
 pub trait Matcher: Send + Sync {
     /// Evaluates the query against a slice of candidate application entries and returns
     /// ranked matches sorted by score in descending order.
-    #[allow(clippy::needless_lifetimes)]
-    fn search<'a>(&self, query: &str, entries: &'a [AppEntry]) -> Vec<ScoredMatch>;
+    fn search(&self, query: &str, entries: &[AppEntry]) -> Vec<ScoredMatch>;
 
     /// Performs matching with cooperative cancellation.
     ///

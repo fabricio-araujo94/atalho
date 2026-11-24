@@ -269,8 +269,7 @@ pub const fn is_word_boundary(chars: &[char], idx: usize) -> bool {
 }
 
 impl Matcher for FuzzyMatcher {
-    #[allow(clippy::needless_lifetimes)]
-    fn search<'a>(&self, query: &str, entries: &'a [AppEntry]) -> Vec<ScoredMatch> {
+    fn search(&self, query: &str, entries: &[AppEntry]) -> Vec<ScoredMatch> {
         self.search_with_cancellation(query, entries, &CancellationToken::new())
             .unwrap_or_default()
     }
