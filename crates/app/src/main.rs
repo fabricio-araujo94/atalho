@@ -270,18 +270,47 @@ fn parse_hotkey(value: &str) -> (HotkeyModifiers, KeyCode) {
             "escape" | "esc" => key = Some(KeyCode::Escape),
             "tab" => key = Some(KeyCode::Tab),
             "backspace" => key = Some(KeyCode::Backspace),
-            f if f.len() > 1 && f.starts_with('f') => {
-                if let Ok(number) = f[1..].parse::<u8>()
+            f if f.starts_with('f') => {
+                if let Some(rest) = f.strip_prefix('f')
+                    && let Ok(number) = rest.parse::<u8>()
                     && (1..=24).contains(&number)
                 {
                     key = Some(KeyCode::F(number));
                 }
             }
-            _ if part.chars().count() == 1 => key = part.chars().next().map(KeyCode::Char),
-            _ => {}
+            _ => {
+                let mut chars = part.chars();
+                if let (Some(character), None) = (chars.next(), chars.next()) {
+                    key = Some(KeyCode::Char(character));
+                }
+            }
         }
     }
     (modifiers, key.unwrap_or(KeyCode::Space))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_hotkey_accepts_case_insensitive_function_keys() {
+        assert_eq!(parse_hotkey("alt+F12").1, KeyCode::F(12));
+        assert_eq!(parse_hotkey("F24").1, KeyCode::F(24));
+    }
+
+    #[test]
+    fn parse_hotkey_rejects_invalid_function_keys() {
+        assert_eq!(parse_hotkey("F0").1, KeyCode::Space);
+        assert_eq!(parse_hotkey("F25").1, KeyCode::Space);
+        assert_eq!(parse_hotkey("F٢").1, KeyCode::Space);
+    }
+
+    #[test]
+    fn parse_hotkey_accepts_exactly_one_unicode_scalar_as_a_key() {
+        assert_eq!(parse_hotkey("alt+é").1, KeyCode::Char('é'));
+        assert_eq!(parse_hotkey("ab").1, KeyCode::Space);
+    }
 }
 
 fn start_auto_start_worker(
