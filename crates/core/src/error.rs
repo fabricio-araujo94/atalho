@@ -1,7 +1,9 @@
 //! Core error types and result alias for the Atalho domain model.
 
+use std::sync::Arc;
+
 /// Core domain error enumeration representing all anticipated failure conditions across the workspace.
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, thiserror::Error)]
 pub enum AppError {
     /// Error encountered during discovery or indexing of applications and commands.
     #[error("Indexing failed: {0}")]
@@ -17,24 +19,16 @@ pub enum AppError {
 
     /// Standard I/O failure encountered during storage, filesystem, or process operations.
     #[error("I/O failed: {0}")]
-    IoFailed(#[from] std::io::Error),
+    IoFailed(#[source] Arc<std::io::Error>),
 
     /// Operating-system or platform-specific failure.
     #[error("Platform failed: {0}")]
     PlatformFailed(String),
 }
 
-impl Clone for AppError {
-    fn clone(&self) -> Self {
-        match self {
-            Self::IndexingFailed(message) => Self::IndexingFailed(message.clone()),
-            Self::MatchFailed(message) => Self::MatchFailed(message.clone()),
-            Self::ExecutionFailed(message) => Self::ExecutionFailed(message.clone()),
-            Self::IoFailed(error) => {
-                Self::IoFailed(std::io::Error::new(error.kind(), error.to_string()))
-            }
-            Self::PlatformFailed(message) => Self::PlatformFailed(message.clone()),
-        }
+impl From<std::io::Error> for AppError {
+    fn from(error: std::io::Error) -> Self {
+        Self::IoFailed(Arc::new(error))
     }
 }
 
@@ -77,7 +71,7 @@ impl AppError {
     /// Creates an [`AppError::IoFailed`] from a custom error message.
     #[must_use]
     pub fn io_failed(message: impl Into<String>) -> Self {
-        Self::IoFailed(std::io::Error::other(message.into()))
+        Self::from(std::io::Error::other(message.into()))
     }
 
     /// Creates an [`AppError::PlatformFailed`] with the provided detail message.
@@ -126,8 +120,27 @@ mod tests {
         let err1 = AppError::indexing_failed("timeout");
         let err2 = AppError::indexing_failed("timeout");
         let err3 = AppError::match_failed("timeout");
+        let io_err1 = AppError::io_failed("disk unavailable");
+        let io_err2 = AppError::io_failed("disk unavailable");
 
         assert_eq!(err1, err2);
         assert_ne!(err1, err3);
+        assert_eq!(io_err1, io_err2);
+    }
+
+    #[test]
+    fn cloning_io_error_shares_the_original_error() {
+        let error = AppError::from(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "file missing",
+        ));
+        let cloned = error.clone();
+
+        assert_eq!(error, cloned);
+        let (AppError::IoFailed(original), AppError::IoFailed(cloned)) = (&error, &cloned) else {
+            panic!("expected I/O errors");
+        };
+        assert!(Arc::ptr_eq(original, cloned));
+        assert_eq!(original.kind(), std::io::ErrorKind::NotFound);
     }
 }

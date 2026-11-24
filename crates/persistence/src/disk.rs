@@ -684,7 +684,7 @@ async fn cleanup_temp_after_rename(
 fn path_error(path: &Path, error: std::io::Error) -> AppError {
     let kind = error.kind();
     let message = error.to_string();
-    AppError::IoFailed(std::io::Error::new(
+    AppError::from(std::io::Error::new(
         kind,
         format!("{}: {message}", path.display()),
     ))
