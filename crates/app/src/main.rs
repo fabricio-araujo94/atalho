@@ -21,7 +21,7 @@ use platform::{PlatformManager, SingleInstanceGuard, TrayController, TrayEvent};
 use std::sync::{Arc, mpsc as std_mpsc};
 use std::thread::JoinHandle;
 use tokio::sync::mpsc;
-use tracing::{error, warn};
+use tracing::{error, info, warn};
 use ui::UiCommand;
 
 fn main() -> atalho_core::Result<()> {
@@ -48,7 +48,7 @@ fn main() -> atalho_core::Result<()> {
         start_tray_event_bridge(tray_event_receiver, ui_command_sender.clone())?;
 
     let platform = PlatformManager::new();
-    println!("Platform detected: {:?}", platform.platform_kind());
+    info!("Platform detected: {:?}", platform.platform_kind());
 
     let indexer = default_indexer(&config);
     let matcher = Arc::new(FuzzyMatcher::new());
