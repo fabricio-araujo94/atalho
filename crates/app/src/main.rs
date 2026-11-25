@@ -33,8 +33,10 @@ fn main() -> atalho_core::Result<()> {
     let persistence = Arc::new(FilePersistence::new()?);
     #[cfg(not(windows))]
     let persistence = Arc::new(InMemoryPersistence::new());
-    let app_persistence: Arc<dyn Persistence> = persistence.clone();
-    let history: Arc<dyn History> = persistence.clone();
+    let app_persistence = Arc::clone(&persistence);
+    let history = Arc::clone(&persistence);
+    let app_persistence: Arc<dyn Persistence> = app_persistence;
+    let history: Arc<dyn History> = history;
     let config_store: Arc<dyn Config> = persistence;
     let config = config_store.load()?;
     let (hotkey_modifiers, hotkey_key) = parse_hotkey(&config.hotkey);
@@ -289,30 +291,6 @@ fn parse_hotkey(value: &str) -> (HotkeyModifiers, KeyCode) {
     (modifiers, key.unwrap_or(KeyCode::Space))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parse_hotkey_accepts_case_insensitive_function_keys() {
-        assert_eq!(parse_hotkey("alt+F12").1, KeyCode::F(12));
-        assert_eq!(parse_hotkey("F24").1, KeyCode::F(24));
-    }
-
-    #[test]
-    fn parse_hotkey_rejects_invalid_function_keys() {
-        assert_eq!(parse_hotkey("F0").1, KeyCode::Space);
-        assert_eq!(parse_hotkey("F25").1, KeyCode::Space);
-        assert_eq!(parse_hotkey("F٢").1, KeyCode::Space);
-    }
-
-    #[test]
-    fn parse_hotkey_accepts_exactly_one_unicode_scalar_as_a_key() {
-        assert_eq!(parse_hotkey("alt+é").1, KeyCode::Char('é'));
-        assert_eq!(parse_hotkey("ab").1, KeyCode::Space);
-    }
-}
-
 fn start_auto_start_worker(
     runtime: &tokio::runtime::Runtime,
     config: AppConfig,
@@ -370,4 +348,28 @@ fn start_auto_start_worker(
         }
     });
     (sender, worker)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_hotkey_accepts_case_insensitive_function_keys() {
+        assert_eq!(parse_hotkey("alt+F12").1, KeyCode::F(12));
+        assert_eq!(parse_hotkey("F24").1, KeyCode::F(24));
+    }
+
+    #[test]
+    fn parse_hotkey_rejects_invalid_function_keys() {
+        assert_eq!(parse_hotkey("F0").1, KeyCode::Space);
+        assert_eq!(parse_hotkey("F25").1, KeyCode::Space);
+        assert_eq!(parse_hotkey("F٢").1, KeyCode::Space);
+    }
+
+    #[test]
+    fn parse_hotkey_accepts_exactly_one_unicode_scalar_as_a_key() {
+        assert_eq!(parse_hotkey("alt+é").1, KeyCode::Char('é'));
+        assert_eq!(parse_hotkey("ab").1, KeyCode::Space);
+    }
 }

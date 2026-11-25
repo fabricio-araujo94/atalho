@@ -110,7 +110,8 @@ async fn create_ready_service()
     let indexer = Arc::new(DefaultIndexer::with_entries(entries, Vec::new()));
     let matcher = Arc::new(FuzzyMatcher::new());
     let persistence = Arc::new(InMemoryPersistence::new());
-    let persistence_trait: Arc<dyn Persistence> = persistence.clone();
+    let persistence_trait = Arc::clone(&persistence);
+    let persistence_trait: Arc<dyn Persistence> = persistence_trait;
     let matcher_trait: Arc<dyn Matcher> = matcher;
     let service = Arc::new(SearchService::new(
         indexer,

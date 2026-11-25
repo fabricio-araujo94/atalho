@@ -30,7 +30,27 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all -- --check
       - name: Run Clippy
-        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+        run: >-
+          cargo clippy --workspace --all-targets --all-features -- -D warnings
+          -D clippy::unwrap_used
+          -D clippy::clone_on_ref_ptr
+          -D clippy::needless_pass_by_value
+          -D clippy::inefficient_to_string
+          -D clippy::manual_let_else
+
+  dependency-audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Generate transient lockfile
+        run: cargo generate-lockfile
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked --jobs 4
+      - name: Audit dependencies
+        run: cargo audit
 
   test:
     name: Workspace tests
